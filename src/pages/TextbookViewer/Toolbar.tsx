@@ -8,9 +8,9 @@ export interface SearchResult {
 
 const COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7"];
 const ERASER_SIZES = [
-  { label: "S", value: 14 },
-  { label: "M", value: 26 },
-  { label: "L", value: 42 },
+  { label: "S", value: 6 },
+  { label: "M", value: 10 },
+  { label: "L", value: 16 },
 ];
 
 export function Toolbar({
@@ -121,7 +121,7 @@ export function Toolbar({
             >
               🖊️
             </button>
-            {(tool === "pen" || tool === "colorPen") &&
+            {tool === "colorPen" &&
               COLORS.map((c) => (
                 <button
                   key={c}

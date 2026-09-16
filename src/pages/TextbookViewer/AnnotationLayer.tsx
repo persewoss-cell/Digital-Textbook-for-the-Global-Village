@@ -8,18 +8,13 @@ export interface AnnotationLayerHandle {
   getCanvas: () => HTMLCanvasElement | null;
 }
 
-function strokeStyleFor(tool: Stroke["tool"], width: number) {
-  // 연필(pen)과 색펜(colorPen) 둘 다 얇고 또렷한 볼펜/연필 느낌으로 그린다.
-  // (예전의 두껍고 반투명한 "형광펜" 스타일은 쓰지 않음)
-  return { width, alpha: 1 };
-}
+const PENCIL_COLOR = "#52525b"; // 연필은 항상 회색 연필 느낌으로 고정
 
 function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, w: number, h: number) {
-  if (stroke.points.length < 2) return;
-  const { width, alpha } = strokeStyleFor(stroke.tool, stroke.width);
-  ctx.strokeStyle = stroke.color;
-  ctx.globalAlpha = alpha;
-  ctx.lineWidth = width;
+  if (stroke.points.length < 4) return;
+  ctx.strokeStyle = stroke.tool === "pen" ? PENCIL_COLOR : stroke.color;
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = stroke.width;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.beginPath();
@@ -30,18 +25,34 @@ function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, w: number, h:
     else ctx.lineTo(x, y);
   }
   ctx.stroke();
-  ctx.globalAlpha = 1;
 }
 
-function distanceToStrokePx(stroke: Stroke, px: number, py: number, w: number, h: number): number {
-  let min = Infinity;
-  for (let i = 0; i < stroke.points.length; i += 2) {
-    const sx = stroke.points[i] * w;
-    const sy = stroke.points[i + 1] * h;
-    const d = Math.hypot(px - sx, py - sy);
-    if (d < min) min = d;
+/** 지우개가 지나간 점만 잘라내고, 남은 부분은 (필요하면 여러 개로 쪼개서) 그대로 유지한다. */
+function eraseAtPoint(
+  strokes: Stroke[],
+  px: number,
+  py: number,
+  w: number,
+  h: number,
+  radius: number,
+): Stroke[] {
+  const result: Stroke[] = [];
+  for (const s of strokes) {
+    const pts = s.points;
+    let current: number[] = [];
+    for (let i = 0; i < pts.length; i += 2) {
+      const x = pts[i] * w;
+      const y = pts[i + 1] * h;
+      if (Math.hypot(px - x, py - y) <= radius) {
+        if (current.length >= 4) result.push({ ...s, points: current });
+        current = [];
+      } else {
+        current.push(pts[i], pts[i + 1]);
+      }
+    }
+    if (current.length >= 4) result.push({ ...s, points: current });
   }
-  return min;
+  return result;
 }
 
 export const AnnotationLayer = forwardRef<
@@ -66,7 +77,7 @@ export const AnnotationLayer = forwardRef<
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const strokesRef = useRef<Stroke[]>([]);
   const drawing = useRef<number[] | null>(null);
-  const erasing = useRef<Set<number> | null>(null);
+  const erasingDraft = useRef<Stroke[] | null>(null);
   const history = useRef<Stroke[][]>([]);
   const future = useRef<Stroke[][]>([]);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
@@ -112,16 +123,13 @@ export const AnnotationLayer = forwardRef<
     [uid, textbookId, page, readOnly],
   );
 
-  const redraw = (extra?: Stroke, skip?: Set<number>) => {
+  const redraw = (source: Stroke[], extra?: Stroke) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    strokes.forEach((s, i) => {
-      if (skip?.has(i)) return;
-      drawStroke(ctx, s, canvas.width, canvas.height);
-    });
+    source.forEach((s) => drawStroke(ctx, s, canvas.width, canvas.height));
     if (extra) drawStroke(ctx, extra, canvas.width, canvas.height);
   };
 
@@ -130,7 +138,7 @@ export const AnnotationLayer = forwardRef<
     if (!canvas) return;
     canvas.width = width;
     canvas.height = height;
-    redraw();
+    redraw(strokes);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strokes, width, height]);
 
@@ -143,20 +151,16 @@ export const AnnotationLayer = forwardRef<
     ];
   };
 
-  const strokeWidth = tool === "eraser" ? 0 : tool === "colorPen" ? 2.5 : 2;
+  const strokeWidth = tool === "colorPen" ? 2.5 : 2;
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (readOnly || tool === "none") return;
     canvasRef.current?.setPointerCapture(e.pointerId);
     if (tool === "eraser") {
-      erasing.current = new Set();
       const [px, py] = toLocal(e.clientX, e.clientY);
-      strokes.forEach((s, i) => {
-        if (distanceToStrokePx(s, px, py, canvasRef.current!.width, canvasRef.current!.height) <= eraserSize) {
-          erasing.current!.add(i);
-        }
-      });
-      redraw(undefined, erasing.current);
+      const canvas = canvasRef.current!;
+      erasingDraft.current = eraseAtPoint(strokes, px, py, canvas.width, canvas.height, eraserSize);
+      redraw(erasingDraft.current);
       return;
     }
     const [x, y] = toLocal(e.clientX, e.clientY);
@@ -167,29 +171,26 @@ export const AnnotationLayer = forwardRef<
     if (tool === "eraser") {
       setHoverPos({ x: e.clientX, y: e.clientY });
     }
-    if (tool === "eraser" && erasing.current) {
+    if (tool === "eraser" && erasingDraft.current) {
       const [px, py] = toLocal(e.clientX, e.clientY);
-      strokes.forEach((s, i) => {
-        if (erasing.current!.has(i)) return;
-        if (distanceToStrokePx(s, px, py, canvasRef.current!.width, canvasRef.current!.height) <= eraserSize) {
-          erasing.current!.add(i);
-        }
-      });
-      redraw(undefined, erasing.current);
+      const canvas = canvasRef.current!;
+      erasingDraft.current = eraseAtPoint(erasingDraft.current, px, py, canvas.width, canvas.height, eraserSize);
+      redraw(erasingDraft.current);
       return;
     }
     if (!drawing.current) return;
     const [x, y] = toLocal(e.clientX, e.clientY);
     drawing.current.push(x / canvasRef.current!.width, y / canvasRef.current!.height);
-    redraw({ tool: tool as "pen" | "colorPen", color, width: strokeWidth, points: drawing.current });
+    redraw(strokes, { tool: tool as "pen" | "colorPen", color, width: strokeWidth, points: drawing.current });
   };
 
   const handlePointerUp = () => {
-    if (tool === "eraser" && erasing.current) {
-      if (erasing.current.size > 0) {
-        commit(strokes.filter((_, i) => !erasing.current!.has(i)));
+    if (tool === "eraser" && erasingDraft.current) {
+      const next = erasingDraft.current;
+      erasingDraft.current = null;
+      if (next.length !== strokes.length || next.some((s, i) => s !== strokes[i])) {
+        commit(next);
       }
-      erasing.current = null;
       return;
     }
     if (!drawing.current) return;

@@ -75,7 +75,7 @@ export default function TextbookViewerPage() {
   const [zoomIndex, setZoomIndex] = useState(FIT_ZOOM_INDEX);
   const [tool, setTool] = useState<AnnotationTool>("none");
   const [color, setColor] = useState("#ef4444");
-  const [eraserSize, setEraserSize] = useState(26);
+  const [eraserSize, setEraserSize] = useState(10);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
   const [noteItems, setNoteItems] = useState<PlacedNote[]>([]);
@@ -310,9 +310,20 @@ export default function TextbookViewerPage() {
     setNoteItems(next);
     setActiveNoteId(id);
     persistNotes(next, true);
+    setTool("none"); // 한 번 찍으면 자동으로 노트 도구가 꺼짐 (계속 새 메모가 생기는 것 방지)
   };
   const handleUpdateNoteText = (id: string, text: string) => {
     const next = noteItems.map((n) => (n.id === id ? { ...n, text } : n));
+    setNoteItems(next);
+    persistNotes(next);
+  };
+  const handleChangeNoteFontSize = (id: string, fontSize: number) => {
+    const next = noteItems.map((n) => (n.id === id ? { ...n, fontSize } : n));
+    setNoteItems(next);
+    persistNotes(next);
+  };
+  const handleMoveNote = (id: string, x: number, y: number) => {
+    const next = noteItems.map((n) => (n.id === id ? { ...n, x, y } : n));
     setNoteItems(next);
     persistNotes(next);
   };
@@ -424,6 +435,7 @@ export default function TextbookViewerPage() {
                         activeNoteId={n === primaryPage ? activeNoteId : null}
                         onCreateNote={handleCreateNote}
                         onSelectNote={setActiveNoteId}
+                        onMoveNote={handleMoveNote}
                       />
                       {magnifierMode && n === primaryPage && (
                         <MagnifierOverlay
@@ -461,6 +473,7 @@ export default function TextbookViewerPage() {
             studentLabel={readOnly ? location.state?.studentName : undefined}
             onSelect={setActiveNoteId}
             onChangeText={handleUpdateNoteText}
+            onChangeFontSize={handleChangeNoteFontSize}
             onDelete={handleDeleteNote}
           />
         </div>

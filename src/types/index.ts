@@ -53,6 +53,7 @@ export interface PlacedNote {
   x: number; // 0-1 normalized page coordinates
   y: number;
   text: string;
+  fontSize?: number; // px, 위/아래 화살표로 직접 조정. 없으면 기본값 사용
 }
 
 // uid 필드는 Firebase Auth 계정이 아니라 `${roomId}_${studentNum}` 형태의

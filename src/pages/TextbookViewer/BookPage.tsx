@@ -28,6 +28,7 @@ interface BookPageProps {
   activeNoteId: string | null;
   onCreateNote: (x: number, y: number) => void;
   onSelectNote: (id: string) => void;
+  onMoveNote: (id: string, x: number, y: number) => void;
 }
 
 export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookPage(
@@ -48,6 +49,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     activeNoteId,
     onCreateNote,
     onSelectNote,
+    onMoveNote,
   },
   ref,
 ) {
@@ -103,9 +105,9 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
           activeId={activeNoteId}
           active={tool === "note"}
           readOnly={readOnly}
-          boxWidth={boxWidth}
           onCreate={onCreateNote}
           onSelect={onSelectNote}
+          onMove={onMoveNote}
         />
       )}
       <div className="pointer-events-none absolute bottom-1 right-2 text-[10px] text-slate-400">

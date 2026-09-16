@@ -3,19 +3,16 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  getDocs,
   onSnapshot,
   query,
   setDoc,
   updateDoc,
   where,
-  orderBy,
-  Unsubscribe,
+  type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "@/firebase";
 import type {
   ChapterMeta,
-  ClassDoc,
   Grade,
   StudentAnnotationDoc,
   StudentBookmarkDoc,
@@ -23,72 +20,7 @@ import type {
   StudentProgressDoc,
   Stroke,
   TextbookDoc,
-  UserDoc,
 } from "@/types";
-
-// ---------- users ----------
-export function watchUser(uid: string, cb: (u: UserDoc | null) => void): Unsubscribe {
-  return onSnapshot(doc(db, "users", uid), (snap) => {
-    cb(snap.exists() ? (snap.data() as UserDoc) : null);
-  });
-}
-
-export async function getUsersByClass(classId: string): Promise<UserDoc[]> {
-  const q = query(
-    collection(db, "users"),
-    where("classId", "==", classId),
-    where("role", "==", "student"),
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => d.data() as UserDoc);
-}
-
-export function watchUsersByClass(
-  classId: string,
-  cb: (users: UserDoc[]) => void,
-): Unsubscribe {
-  const q = query(
-    collection(db, "users"),
-    where("classId", "==", classId),
-    where("role", "==", "student"),
-  );
-  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => d.data() as UserDoc)));
-}
-
-export function watchAllUsers(cb: (users: UserDoc[]) => void): Unsubscribe {
-  return onSnapshot(collection(db, "users"), (snap) =>
-    cb(snap.docs.map((d) => d.data() as UserDoc)),
-  );
-}
-
-// ---------- classes ----------
-export function classId(grade: Grade | number, classNum: number) {
-  return `${grade}-${classNum}`;
-}
-
-export async function ensureClassDoc(grade: Grade, classNum: number) {
-  const id = classId(grade, classNum);
-  const ref = doc(db, "classes", id);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    const data: ClassDoc = {
-      id,
-      grade,
-      classNum,
-      teacherUid: null,
-      teacherName: null,
-      createdAt: Date.now(),
-    };
-    await setDoc(ref, data);
-  }
-  return id;
-}
-
-export function watchClasses(cb: (classes: ClassDoc[]) => void): Unsubscribe {
-  return onSnapshot(collection(db, "classes"), (snap) =>
-    cb(snap.docs.map((d) => d.data() as ClassDoc)),
-  );
-}
 
 // ---------- textbooks ----------
 export function watchTextbooksByGrade(
@@ -110,20 +42,40 @@ export async function getTextbook(id: string): Promise<TextbookDoc | null> {
   return snap.exists() ? (snap.data() as TextbookDoc) : null;
 }
 
-// ---------- student notes / annotations / bookmarks / progress ----------
-const pageKey = (uid: string, textbookId: string, page: number) =>
-  `${uid}_${textbookId}_${page}`;
+export async function createTextbookDoc(input: {
+  id: string;
+  grade: Grade;
+  subject: string;
+  title: string;
+  storagePath: string;
+  pageCount: number;
+}) {
+  const data: TextbookDoc = {
+    ...input,
+    chapters: [],
+    uploadedAt: Date.now(),
+  };
+  await setDoc(doc(db, "textbooks", input.id), data);
+}
 
-export async function saveNote(
-  uid: string,
-  textbookId: string,
-  page: number,
-  text: string,
-) {
+export async function updateTextbookChapters(id: string, chapters: ChapterMeta[]) {
+  await updateDoc(doc(db, "textbooks", id), { chapters });
+}
+
+export async function deleteTextbookDoc(id: string) {
+  await deleteDoc(doc(db, "textbooks", id));
+}
+
+// ---------- 참가자(=uid: `${roomId}_${studentNum}`)별 노트/필기/책갈피/진도 ----------
+const pageKey = (uid: string, textbookId: string, page: number) => `${uid}_${textbookId}_${page}`;
+const roomIdOf = (uid: string) => uid.split("_")[0];
+
+export async function saveNote(uid: string, textbookId: string, page: number, text: string) {
   const id = pageKey(uid, textbookId, page);
   const data: StudentNoteDoc = {
     id,
     uid,
+    roomId: roomIdOf(uid),
     textbookId,
     page,
     text,
@@ -154,6 +106,7 @@ export async function saveAnnotation(
   const data: StudentAnnotationDoc = {
     id,
     uid,
+    roomId: roomIdOf(uid),
     textbookId,
     page,
     strokes,
@@ -185,13 +138,14 @@ export async function toggleBookmark(
     const data: StudentBookmarkDoc = {
       id,
       uid,
+      roomId: roomIdOf(uid),
       textbookId,
       page,
       createdAt: Date.now(),
     };
     await setDoc(doc(db, "studentBookmarks", id), data);
   } else {
-    await setDoc(doc(db, "studentBookmarks", id), { id, uid, textbookId, page, deleted: true, createdAt: 0 });
+    await deleteDoc(doc(db, "studentBookmarks", id));
   }
 }
 
@@ -206,12 +160,7 @@ export function watchBookmarks(
     where("textbookId", "==", textbookId),
   );
   return onSnapshot(q, (snap) =>
-    cb(
-      snap.docs
-        .map((d) => d.data() as StudentBookmarkDoc & { deleted?: boolean })
-        .filter((b) => !b.deleted)
-        .sort((a, b) => a.page - b.page),
-    ),
+    cb(snap.docs.map((d) => d.data() as StudentBookmarkDoc).sort((a, b) => a.page - b.page)),
   );
 }
 
@@ -224,12 +173,11 @@ export async function updateProgress(
   const id = `${uid}_${textbookId}`;
   const ref = doc(db, "studentProgress", id);
   const snap = await getDoc(ref);
-  const prevViewed = snap.exists()
-    ? ((snap.data() as StudentProgressDoc).viewedPages ?? {})
-    : {};
+  const prevViewed = snap.exists() ? (snap.data() as StudentProgressDoc).viewedPages ?? {} : {};
   const data: StudentProgressDoc = {
     id,
     uid,
+    roomId: roomIdOf(uid),
     textbookId,
     lastPage: page,
     viewedPages: { ...prevViewed, [String(page)]: true },
@@ -249,41 +197,3 @@ export function watchProgress(
     cb(snap.exists() ? (snap.data() as StudentProgressDoc) : null),
   );
 }
-
-export function orderClasses<T extends { grade: number; classNum: number }>(
-  arr: T[],
-): T[] {
-  return [...arr].sort((a, b) => a.grade - b.grade || a.classNum - b.classNum);
-}
-
-// ---------- admin: textbooks ----------
-export async function createTextbookDoc(input: {
-  id: string;
-  grade: Grade;
-  subject: string;
-  title: string;
-  storagePath: string;
-  pageCount: number;
-  uploadedBy: string;
-}) {
-  const data: TextbookDoc = {
-    ...input,
-    chapters: [],
-    uploadedAt: Date.now(),
-  };
-  await setDoc(doc(db, "textbooks", input.id), data);
-}
-
-export async function updateTextbookChapters(id: string, chapters: ChapterMeta[]) {
-  await updateDoc(doc(db, "textbooks", id), { chapters });
-}
-
-export async function deleteTextbookDoc(id: string) {
-  await deleteDoc(doc(db, "textbooks", id));
-}
-
-export async function deleteClassDoc(id: string) {
-  await deleteDoc(doc(db, "classes", id));
-}
-
-export { orderBy };

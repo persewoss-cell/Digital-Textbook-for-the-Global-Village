@@ -1,33 +1,25 @@
-export type Role = "admin" | "teacher" | "student";
-
 export type Grade = 3 | 4 | 5 | 6;
 
 export const GRADES: Grade[] = [3, 4, 5, 6];
 
-export type AccountStatus = "pending" | "active" | "rejected" | "disabled";
+/** 4자리 숫자 비밀번호 (방 비밀번호, 관리자 마스터 비밀번호 공통 형식) */
+export const ROOM_PASSWORD_PATTERN = /^\d{4}$/;
 
-export interface UserDoc {
-  uid: string;
-  role: Role;
-  name: string;
-  grade: Grade | null;
-  classNum: number | null;
-  studentNum: number | null;
-  classId: string | null; // `${grade}-${classNum}`
-  status: AccountStatus;
-  loginKey: string; // deterministic key used to build the synthetic auth email
-  createdAt: number;
-  approvedAt?: number | null;
-  approvedBy?: string | null;
-}
-
-export interface ClassDoc {
-  id: string; // `${grade}-${classNum}`
+export interface RoomDoc {
+  id: string;
   grade: Grade;
   classNum: number;
-  teacherUid: string | null;
-  teacherName: string | null;
+  password: string; // 선생님이 정한 4자리 비밀번호
+  teacherName: string;
   createdAt: number;
+}
+
+export interface ParticipantDoc {
+  id: string; // `${roomId}_${studentNum}`
+  roomId: string;
+  studentNum: number;
+  name: string;
+  joinedAt: number;
 }
 
 export interface ChapterMeta {
@@ -44,16 +36,6 @@ export interface TextbookDoc {
   pageCount: number | null;
   chapters: ChapterMeta[];
   uploadedAt: number;
-  uploadedBy: string;
-}
-
-export interface StudentNoteDoc {
-  id: string; // `${uid}_${textbookId}_${page}`
-  uid: string;
-  textbookId: string;
-  page: number;
-  text: string;
-  updatedAt: number;
 }
 
 export type StrokeTool = "pen" | "highlighter";
@@ -65,9 +47,23 @@ export interface Stroke {
   points: number[]; // flattened [x1,y1,x2,y2,...] in 0-1 normalized page coordinates
 }
 
-export interface StudentAnnotationDoc {
+// uid 필드는 Firebase Auth 계정이 아니라 `${roomId}_${studentNum}` 형태의
+// "방 안에서의 참가자 키"입니다. 계정 없이도 같은 방+번호로 다시 들어오면
+// 이전 필기/노트/진도를 이어서 볼 수 있도록 하기 위한 값이에요.
+export interface StudentNoteDoc {
   id: string; // `${uid}_${textbookId}_${page}`
   uid: string;
+  roomId: string;
+  textbookId: string;
+  page: number;
+  text: string;
+  updatedAt: number;
+}
+
+export interface StudentAnnotationDoc {
+  id: string;
+  uid: string;
+  roomId: string;
   textbookId: string;
   page: number;
   strokes: Stroke[];
@@ -75,8 +71,9 @@ export interface StudentAnnotationDoc {
 }
 
 export interface StudentBookmarkDoc {
-  id: string; // `${uid}_${textbookId}_${page}`
+  id: string;
   uid: string;
+  roomId: string;
   textbookId: string;
   page: number;
   createdAt: number;
@@ -85,14 +82,10 @@ export interface StudentBookmarkDoc {
 export interface StudentProgressDoc {
   id: string; // `${uid}_${textbookId}`
   uid: string;
+  roomId: string;
   textbookId: string;
   lastPage: number;
   viewedPages: Record<string, boolean>;
   totalPages: number;
   updatedAt: number;
-}
-
-export interface AppUser {
-  uid: string;
-  doc: UserDoc;
 }

@@ -1,54 +1,36 @@
 import { Route, Routes } from "react-router-dom";
-import { RequireAuth } from "@/components/RequireAuth";
-import LoginPage from "@/pages/LoginPage";
-import SignupPage from "@/pages/SignupPage";
-import AdminLoginPage from "@/pages/AdminLoginPage";
-import TextbookHome from "@/pages/TextbookHome";
+import { useAnonSession } from "@/lib/session";
+import RoomLobbyPage from "@/pages/RoomLobbyPage";
+import CreateRoomPage from "@/pages/CreateRoomPage";
+import StudentJoinPage from "@/pages/StudentJoinPage";
+import RoomManagePage from "@/pages/RoomManagePage";
+import AdminMasterPage from "@/pages/AdminMasterPage";
+import RoomTextbookHome from "@/pages/RoomTextbookHome";
 import TextbookViewerPage from "@/pages/TextbookViewer/TextbookViewerPage";
-import TeacherDashboard from "@/pages/TeacherDashboard/TeacherDashboard";
-import AdminDashboard from "@/pages/AdminDashboard/AdminDashboard";
 
 export default function App() {
+  const ready = useAnonSession();
+
+  if (!ready) {
+    return (
+      <div className="flex h-screen items-center justify-center text-slate-400">
+        불러오는 중...
+      </div>
+    );
+  }
+
   return (
     <Routes>
-      <Route path="/" element={<LoginPage />} />
-      <Route path="/signup" element={<SignupPage />} />
-      <Route path="/admin/login" element={<AdminLoginPage />} />
+      <Route path="/" element={<RoomLobbyPage />} />
+      <Route path="/create-room" element={<CreateRoomPage />} />
+      <Route path="/admin" element={<AdminMasterPage />} />
 
-      <Route
-        path="/textbook"
-        element={
-          <RequireAuth roles={["student", "teacher"]}>
-            <TextbookHome />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/textbook/:textbookId"
-        element={
-          <RequireAuth roles={["student", "teacher"]}>
-            <TextbookViewerPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/teacher"
-        element={
-          <RequireAuth roles={["teacher"]}>
-            <TeacherDashboard />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          <RequireAuth roles={["admin"]}>
-            <AdminDashboard />
-          </RequireAuth>
-        }
-      />
+      <Route path="/room/:roomId/join" element={<StudentJoinPage />} />
+      <Route path="/room/:roomId/manage" element={<RoomManagePage />} />
+      <Route path="/room/:roomId/textbook" element={<RoomTextbookHome />} />
+      <Route path="/room/:roomId/textbook/:textbookId" element={<TextbookViewerPage />} />
 
-      <Route path="*" element={<LoginPage />} />
+      <Route path="*" element={<RoomLobbyPage />} />
     </Routes>
   );
 }

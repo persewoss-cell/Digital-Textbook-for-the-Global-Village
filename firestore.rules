@@ -1,93 +1,42 @@
 rules_version = '2';
 
+// 이 앱은 회원가입/로그인 계정이 없습니다. 대신 누구나 페이지에 들어오면 자동으로
+// 조용한 익명 인증이 이루어지고(로그인 화면 없음), 방 비밀번호 확인은 클라이언트에서
+// 이뤄집니다(Firebase 무료 요금제라 서버 코드를 쓸 수 없어요). 그래서 아래 규칙은
+// "익명이라도 우리 앱을 거쳐 들어왔는지"만 확인하는 가벼운 수준입니다 - 학교 내부에서
+// 저장/부담 없이 쓰는 용도에 맞춘 선택입니다.
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function isSignedIn() {
       return request.auth != null;
     }
-    function myRole() {
-      return isSignedIn() ? request.auth.token.role : null;
-    }
-    function isAdmin() {
-      return myRole() == 'admin';
-    }
-    function isTeacher() {
-      return myRole() == 'teacher';
-    }
-    function myUserDoc() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-    function myClassId() {
-      return myUserDoc().classId;
-    }
-    function ownerClassId(ownerUid) {
-      return get(/databases/$(database)/documents/users/$(ownerUid)).data.classId;
+
+    match /rooms/{roomId} {
+      allow read, create, delete: if isSignedIn();
+      allow update: if false;
     }
 
-    // 사용자 문서: 계정 생성/승인/수정/삭제는 전부 Cloud Functions(Admin SDK)를 통해서만 이뤄지고,
-    // 클라이언트에서는 절대 직접 쓰지 못하도록 막습니다.
-    match /users/{uid} {
-      allow read: if isSignedIn() && (
-        request.auth.uid == uid ||
-        isAdmin() ||
-        (isTeacher() && resource.data.role == 'student' && resource.data.classId == myClassId())
-      );
-      allow write: if false;
+    match /participants/{id} {
+      allow read, create, update: if isSignedIn();
+      allow delete: if isSignedIn();
     }
 
-    // 학급: 조회는 로그인한 누구나, 생성/배정은 관리자만 (Cloud Function 또는 관리자 화면에서 직접 씀).
-    match /classes/{classId} {
-      allow read: if isSignedIn();
-      allow create, update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    // 교과서 메타데이터: 조회는 로그인한 누구나, 업로드/수정/삭제는 관리자만.
     match /textbooks/{textbookId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read, write: if isSignedIn();
     }
 
-    // 학생 노트 / 필기 / 책갈피 / 진도: 본인만 쓸 수 있고, 본인 + 관리자 + 담임 선생님만 읽을 수 있음.
     match /studentNotes/{docId} {
-      allow read: if isSignedIn() && (
-        resource.data.uid == request.auth.uid ||
-        isAdmin() ||
-        (isTeacher() && ownerClassId(resource.data.uid) == myClassId())
-      );
-      allow create, update: if isSignedIn() && request.resource.data.uid == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow read, create, update, delete: if isSignedIn();
     }
-
     match /studentAnnotations/{docId} {
-      allow read: if isSignedIn() && (
-        resource.data.uid == request.auth.uid ||
-        isAdmin() ||
-        (isTeacher() && ownerClassId(resource.data.uid) == myClassId())
-      );
-      allow create, update: if isSignedIn() && request.resource.data.uid == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow read, create, update, delete: if isSignedIn();
     }
-
     match /studentBookmarks/{docId} {
-      allow read: if isSignedIn() && (
-        resource.data.uid == request.auth.uid ||
-        isAdmin() ||
-        (isTeacher() && ownerClassId(resource.data.uid) == myClassId())
-      );
-      allow create, update: if isSignedIn() && request.resource.data.uid == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow read, create, update, delete: if isSignedIn();
     }
-
     match /studentProgress/{docId} {
-      allow read: if isSignedIn() && (
-        resource.data.uid == request.auth.uid ||
-        isAdmin() ||
-        (isTeacher() && ownerClassId(resource.data.uid) == myClassId())
-      );
-      allow create, update: if isSignedIn() && request.resource.data.uid == request.auth.uid;
-      allow delete: if false;
+      allow read, create, update, delete: if isSignedIn();
     }
   }
 }

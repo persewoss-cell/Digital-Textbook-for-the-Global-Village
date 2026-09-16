@@ -1,14 +1,6 @@
 {
   "indexes": [
     {
-      "collectionGroup": "users",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "classId", "order": "ASCENDING" },
-        { "fieldPath": "role", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "textbooks",
       "queryScope": "COLLECTION",
       "fields": [{ "fieldPath": "grade", "order": "ASCENDING" }]

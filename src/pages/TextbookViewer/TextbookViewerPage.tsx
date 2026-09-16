@@ -4,7 +4,6 @@ import { ref, getDownloadURL } from "firebase/storage";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import HTMLFlipBook from "react-pageflip-enhanced";
 import { storage } from "@/firebase";
-import { useAuth } from "@/context/AuthContext";
 import { AppShell } from "@/components/AppShell";
 import {
   getTextbook,
@@ -14,7 +13,9 @@ import {
   watchBookmarks,
 } from "@/lib/firestore";
 import { extractPageText, loadPdf } from "@/lib/pdf";
-import type { StudentBookmarkDoc, TextbookDoc } from "@/types";
+import { getRoom, participantKey } from "@/lib/rooms";
+import { isRoomUnlocked, loadParticipantSession, type ParticipantSession } from "@/lib/session";
+import type { RoomDoc, StudentBookmarkDoc, TextbookDoc } from "@/types";
 import { BookPage } from "./BookPage";
 import { Toolbar, type SearchResult } from "./Toolbar";
 import { TocPanel } from "./TocPanel";
@@ -25,15 +26,40 @@ const ZOOM_LEVELS = [0.7, 0.85, 1, 1.15, 1.3, 1.5];
 const BASE_WIDTH = 420;
 
 export default function TextbookViewerPage() {
-  const { textbookId } = useParams<{ textbookId: string }>();
+  const { roomId, textbookId } = useParams<{ roomId: string; textbookId: string }>();
   const [searchParams] = useSearchParams();
   const location = useLocation() as { state?: { studentName?: string } };
   const navigate = useNavigate();
-  const { userDoc } = useAuth();
 
-  const asUid = searchParams.get("asUid");
-  const readOnly = Boolean(asUid);
-  const effectiveUid = asUid || userDoc?.uid || "";
+  const asStudentNum = searchParams.get("asStudentNum");
+  const canMonitor = Boolean(roomId && isRoomUnlocked(roomId));
+  const readOnly = Boolean(asStudentNum) && canMonitor;
+
+  const [room, setRoom] = useState<RoomDoc | null>(null);
+  const [session, setSession] = useState<ParticipantSession | null>(null);
+
+  useEffect(() => {
+    if (!roomId) return;
+    getRoom(roomId).then(setRoom);
+  }, [roomId]);
+
+  useEffect(() => {
+    if (!roomId || readOnly) return;
+    const s = loadParticipantSession(roomId);
+    if (!s) {
+      navigate(`/room/${roomId}/join`, { replace: true });
+      return;
+    }
+    setSession(s);
+  }, [roomId, readOnly, navigate]);
+
+  const effectiveUid = !roomId
+    ? ""
+    : readOnly
+      ? participantKey(roomId, Number(asStudentNum))
+      : session
+        ? participantKey(roomId, session.studentNum)
+        : "";
 
   const [textbook, setTextbook] = useState<TextbookDoc | null>(null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
@@ -104,7 +130,7 @@ export default function TextbookViewerPage() {
   const handleFlip = (e: { data: number }) => {
     const page = e.data + 1;
     setCurrentPage(page);
-    if (!readOnly && userDoc) {
+    if (!readOnly && effectiveUid) {
       void updateProgress(effectiveUid, textbookId!, page, numPages);
     }
   };
@@ -188,7 +214,7 @@ export default function TextbookViewerPage() {
     );
   }
 
-  if (!pdf || !textbook) {
+  if (!pdf || !textbook || !room || !effectiveUid) {
     return (
       <AppShell>
         <div className="flex h-full items-center justify-center text-slate-400">교재를 불러오는 중...</div>
@@ -197,7 +223,15 @@ export default function TextbookViewerPage() {
   }
 
   return (
-    <AppShell fullBleed>
+    <AppShell
+      fullBleed
+      badge={`${room.grade}학년 ${room.classNum}반 · ${readOnly ? (location.state?.studentName ?? "학생") : session?.name}`}
+      right={
+        <button className="btn-ghost" onClick={() => navigate(`/room/${roomId}/textbook`)}>
+          목차 목록
+        </button>
+      }
+    >
       <div className="flex h-full flex-col">
         {readOnly && (
           <div className="bg-amber-50 px-4 py-1.5 text-center text-xs font-semibold text-amber-700">

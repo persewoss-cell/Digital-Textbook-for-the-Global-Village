@@ -62,24 +62,35 @@ export function NotesPanel({
                 }}
                 className="w-full resize-none border-0 bg-transparent text-sm outline-none disabled:text-slate-500"
                 rows={2}
-                placeholder="메모를 입력하세요 (Enter로 줄바꿈, ↑↓로 글씨 크기)"
+                placeholder="메모를 입력하세요 (Enter로 줄바꿈)"
                 value={note.text}
                 disabled={readOnly}
                 onChange={(e) => onChangeText(note.id, e.target.value)}
-                onKeyDown={(e) => {
-                  if (readOnly) return;
-                  if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    onChangeFontSize(note.id, Math.min(MAX_FONT_SIZE, fontSize + 1));
-                  } else if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    onChangeFontSize(note.id, Math.max(MIN_FONT_SIZE, fontSize - 1));
-                  }
-                }}
               />
               {!readOnly && (
                 <div className="mt-1 flex items-center justify-between">
-                  <span className="text-[11px] text-slate-400">글씨 {fontSize}px</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[11px] text-slate-400">글씨</span>
+                    <button
+                      className="rounded border border-slate-200 px-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onChangeFontSize(note.id, Math.max(MIN_FONT_SIZE, fontSize - 1));
+                      }}
+                    >
+                      가▼
+                    </button>
+                    <span className="w-7 text-center text-[11px] text-slate-400">{fontSize}</span>
+                    <button
+                      className="rounded border border-slate-200 px-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onChangeFontSize(note.id, Math.min(MAX_FONT_SIZE, fontSize + 1));
+                      }}
+                    >
+                      가▲
+                    </button>
+                  </div>
                   <button
                     className="text-[11px] text-slate-400 hover:text-red-500"
                     onClick={(e) => {

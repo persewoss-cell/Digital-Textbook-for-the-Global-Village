@@ -16,8 +16,7 @@ const ERASER_SIZES = [
 export function Toolbar({
   viewMode,
   onViewModeChange,
-  zoomIndex,
-  zoomLevels,
+  zoom,
   onZoomChange,
   tool,
   onToolChange,
@@ -37,9 +36,8 @@ export function Toolbar({
 }: {
   viewMode: "single" | "spread";
   onViewModeChange: (m: "single" | "spread") => void;
-  zoomIndex: number;
-  zoomLevels: number[];
-  onZoomChange: (i: number) => void;
+  zoom: number;
+  onZoomChange: (delta: number) => void;
   tool: AnnotationTool;
   onToolChange: (t: AnnotationTool) => void;
   color: string;
@@ -81,23 +79,19 @@ export function Toolbar({
 
       {/* zoom */}
       <div className="flex items-center gap-1">
-        <button className="btn-ghost px-2" title="축소" onClick={() => onZoomChange(Math.max(0, zoomIndex - 1))}>
+        <button className="btn-ghost px-2" title="축소" onClick={() => onZoomChange(-0.2)}>
           －
         </button>
-        <span className="w-10 text-center text-xs text-slate-500">{Math.round(zoomLevels[zoomIndex] * 100)}%</span>
-        <button
-          className="btn-ghost px-2"
-          title="확대"
-          onClick={() => onZoomChange(Math.min(zoomLevels.length - 1, zoomIndex + 1))}
-        >
+        <span className="w-10 text-center text-xs text-slate-500">{Math.round(zoom * 100)}%</span>
+        <button className="btn-ghost px-2" title="확대" onClick={() => onZoomChange(0.2)}>
           ＋
         </button>
         <button
           className={`btn-ghost px-2 ${magnifierMode ? "bg-brand-100 text-brand-700" : ""}`}
-          title="돋보기로 부분 확대"
+          title="부분만 크게 보기"
           onClick={onToggleMagnifier}
         >
-          🔍
+          🔲
         </button>
       </div>
 

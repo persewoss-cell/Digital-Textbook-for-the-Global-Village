@@ -10,7 +10,7 @@ export interface AnnotationLayerHandle {
 
 const PENCIL_COLOR = "#52525b"; // 연필은 항상 회색 연필 느낌으로 고정
 
-function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, w: number, h: number) {
+export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, w: number, h: number) {
   if (stroke.points.length < 4) return;
   ctx.strokeStyle = stroke.tool === "pen" ? PENCIL_COLOR : stroke.color;
   ctx.globalAlpha = 1;

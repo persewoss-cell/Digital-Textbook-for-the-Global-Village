@@ -1,15 +1,51 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { AppShell } from "@/components/AppShell";
 import { deleteRoomCascade, getRoom, participantKey, watchParticipants } from "@/lib/rooms";
-import { watchProgress, watchTextbooksByGrade } from "@/lib/firestore";
+import { getFirstTextbookForGrade, watchAnnotation, watchProgress } from "@/lib/firestore";
 import { loadPdf } from "@/lib/pdf";
 import { isRoomUnlocked, markRoomUnlocked } from "@/lib/session";
 import { PdfPageCanvas } from "@/pages/TextbookViewer/PdfPageCanvas";
+import { drawStroke } from "@/pages/TextbookViewer/AnnotationLayer";
 import type { ParticipantDoc, RoomDoc, StudentProgressDoc, TextbookDoc } from "@/types";
 
 const THUMB_WIDTH = 160;
+
+function ThumbStrokes({
+  roomId,
+  studentNum,
+  textbookId,
+  page,
+  width,
+  height,
+}: {
+  roomId: string;
+  studentNum: number;
+  textbookId: string;
+  page: number;
+  width: number;
+  height: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(
+    () =>
+      watchAnnotation(participantKey(roomId, studentNum), textbookId, page, (a) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.clearRect(0, 0, width, height);
+        (a?.strokes ?? []).forEach((s) => drawStroke(ctx, s, width, height));
+      }),
+    [roomId, studentNum, textbookId, page, width, height],
+  );
+
+  return <canvas ref={canvasRef} className="absolute inset-0" />;
+}
 
 function ParticipantThumbCard({
   roomId,
@@ -31,15 +67,26 @@ function ParticipantThumbCard({
     [roomId, participant.studentNum, textbookId],
   );
 
-  const page = progress?.lastPage ?? 1;
+  const page = Math.min(progress?.lastPage ?? 1, pdf?.numPages ?? 1);
+  const thumbHeight = THUMB_WIDTH * 1.4;
 
   return (
     <button onClick={onOpen} className="card overflow-hidden text-left transition hover:shadow-md">
-      <div className="flex items-center justify-center bg-slate-100 py-2">
+      <div className="relative flex items-center justify-center bg-slate-100 py-2">
         {pdf ? (
-          <PdfPageCanvas pdf={pdf} pageNumber={Math.min(page, pdf.numPages)} width={THUMB_WIDTH} />
+          <div className="relative">
+            <PdfPageCanvas pdf={pdf} pageNumber={page} width={THUMB_WIDTH} />
+            <ThumbStrokes
+              roomId={roomId}
+              studentNum={participant.studentNum}
+              textbookId={textbookId}
+              page={page}
+              width={THUMB_WIDTH}
+              height={thumbHeight}
+            />
+          </div>
         ) : (
-          <div style={{ width: THUMB_WIDTH, height: THUMB_WIDTH * 1.4 }} />
+          <div style={{ width: THUMB_WIDTH, height: thumbHeight }} />
         )}
       </div>
       <div className="border-t border-slate-100 p-2 text-center text-xs font-semibold text-slate-600">
@@ -59,8 +106,7 @@ export default function RoomManagePage() {
   const [error, setError] = useState<string | null>(null);
 
   const [participants, setParticipants] = useState<ParticipantDoc[]>([]);
-  const [textbooks, setTextbooks] = useState<TextbookDoc[]>([]);
-  const [textbookId, setTextbookId] = useState("");
+  const [textbook, setTextbook] = useState<TextbookDoc | null>(null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
 
   useEffect(() => {
@@ -75,15 +121,10 @@ export default function RoomManagePage() {
 
   useEffect(() => {
     if (!room || !unlocked) return;
-    return watchTextbooksByGrade(room.grade, setTextbooks);
+    getFirstTextbookForGrade(room.grade).then(setTextbook);
   }, [room, unlocked]);
 
   useEffect(() => {
-    if (!textbookId && textbooks.length > 0) setTextbookId(textbooks[0].id);
-  }, [textbooks, textbookId]);
-
-  useEffect(() => {
-    const textbook = textbooks.find((t) => t.id === textbookId);
     if (!textbook) {
       setPdf(null);
       return;
@@ -95,7 +136,7 @@ export default function RoomManagePage() {
     return () => {
       cancelled = true;
     };
-  }, [textbookId, textbooks]);
+  }, [textbook]);
 
   const handleUnlock = (e: FormEvent) => {
     e.preventDefault();
@@ -176,43 +217,43 @@ export default function RoomManagePage() {
             <h1 className="text-xl font-bold">
               {room.grade}학년 {room.classNum}반 관리
             </h1>
-            <p className="text-sm text-slate-500">{room.teacherName} 선생님</p>
+            <p className="text-sm text-slate-500">
+              {room.teacherName} 선생님 · {textbook?.title ?? "교과서 없음"}
+            </p>
           </div>
           <button className="btn-secondary text-red-500" onClick={handleDelete}>
             방 삭제하기
           </button>
         </div>
 
-        <div className="mb-4 flex items-center gap-2">
-          <label className="text-sm text-slate-500">교과서</label>
-          <select className="input w-auto" value={textbookId} onChange={(e) => setTextbookId(e.target.value)}>
-            {textbooks.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title}
-              </option>
-            ))}
-          </select>
-          <span className="text-xs text-slate-400">학생들이 지금 보고 있는 쪽이 실시간으로 표시돼요.</span>
-        </div>
+        <p className="mb-3 text-xs text-slate-400">
+          학생들이 지금 보고 있는 쪽과 필기가 실시간으로 표시돼요. 카드를 누르면 전체 화면으로 볼 수 있어요.
+        </p>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {participants.map((p) => (
-            <ParticipantThumbCard
-              key={p.id}
-              roomId={roomId}
-              participant={p}
-              textbookId={textbookId}
-              pdf={pdf}
-              onOpen={() =>
-                navigate(`/room/${roomId}/textbook/${textbookId}?asStudentNum=${p.studentNum}`, {
-                  state: { studentName: p.name },
-                })
-              }
-            />
-          ))}
+          {textbook &&
+            participants.map((p) => (
+              <ParticipantThumbCard
+                key={p.id}
+                roomId={roomId}
+                participant={p}
+                textbookId={textbook.id}
+                pdf={pdf}
+                onOpen={() =>
+                  navigate(`/room/${roomId}/textbook/${textbook.id}?asStudentNum=${p.studentNum}`, {
+                    state: { studentName: p.name },
+                  })
+                }
+              />
+            ))}
           {participants.length === 0 && (
             <p className="col-span-full rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
               아직 참여한 학생이 없어요.
+            </p>
+          )}
+          {participants.length > 0 && !textbook && (
+            <p className="col-span-full rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
+              이 학년에 등록된 교과서가 없어요.
             </p>
           )}
         </div>

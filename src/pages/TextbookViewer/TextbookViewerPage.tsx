@@ -7,6 +7,7 @@ import {
   saveNoteItems,
   updateProgress,
   watchNote,
+  watchProgress,
 } from "@/lib/firestore";
 import { extractPageText, loadPdf } from "@/lib/pdf";
 import { getRoom, participantKey } from "@/lib/rooms";
@@ -18,11 +19,12 @@ import { TocPanel } from "./TocPanel";
 import { NotesPanel } from "./NotesPanel";
 import { MagnifierOverlay, type MagnifierRect } from "./MagnifierOverlay";
 
-const ZOOM_LEVELS = [0.6, 0.8, 1, 1.25, 1.5, 2];
-const FIT_ZOOM_INDEX = 2;
+const ZOOM_STEP = 0.2;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 4;
 const PAGE_GAP = 10;
-const CONTAINER_PADDING = 24;
-const BOTTOM_BAR_SPACE = 72;
+const CONTAINER_PADDING = 16;
+const BOTTOM_BAR_SPACE = 64;
 
 // 표지(1쪽)는 혼자 오른쪽에 보이고, 2쪽부터 (2,3) (4,5) (6,7)... 순서로 짝을 이룬다.
 const spreadStart = (n: number) => (n <= 1 ? 1 : n % 2 === 0 ? n : n - 1);
@@ -72,14 +74,15 @@ export default function TextbookViewerPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageOpacity, setPageOpacity] = useState(1);
   const [viewMode, setViewMode] = useState<"single" | "spread">("spread");
-  const [zoomIndex, setZoomIndex] = useState(FIT_ZOOM_INDEX);
+  const [zoom, setZoom] = useState(1);
   const [tool, setTool] = useState<AnnotationTool>("none");
   const [color, setColor] = useState("#ef4444");
   const [eraserSize, setEraserSize] = useState(10);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
-  const [noteItems, setNoteItems] = useState<PlacedNote[]>([]);
+  const [notesByPage, setNotesByPage] = useState<Map<number, PlacedNote[]>>(new Map());
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
+  const [activeNotePage, setActiveNotePage] = useState(1);
   const noteSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [magnifierMode, setMagnifierMode] = useState(false);
@@ -130,6 +133,18 @@ export default function TextbookViewerPage() {
     return () => ro.disconnect();
   }, []);
 
+  // 선생님/관리자가 열람 중일 때는 학생이 지금 보고 있는 쪽을 실시간으로 따라간다.
+  useEffect(() => {
+    if (!readOnly || !effectiveUid || !textbookId) return;
+    return watchProgress(effectiveUid, textbookId, (p) => {
+      if (!p) return;
+      setCurrentPage((cur) => {
+        const target = viewMode === "spread" ? spreadStart(p.lastPage) : p.lastPage;
+        return target === cur ? cur : target;
+      });
+    });
+  }, [readOnly, effectiveUid, textbookId, viewMode]);
+
   const pagesToShow = useMemo(() => {
     if (viewMode === "single") return [currentPage];
     const start = spreadStart(currentPage);
@@ -138,6 +153,7 @@ export default function TextbookViewerPage() {
     if (start + 1 <= numPages) arr.push(start + 1);
     return arr;
   }, [viewMode, currentPage, numPages]);
+  const pagesKey = pagesToShow.join(",");
 
   // 표지 혼자일 때도 다음 스프레드와 같은 크기를 유지하기 위해 항상 2쪽 기준으로 계산한다.
   const layoutPageCount = viewMode === "spread" ? 2 : 1;
@@ -146,17 +162,28 @@ export default function TextbookViewerPage() {
 
   useEffect(() => {
     setActiveNoteId(null);
+    setActiveNotePage(primaryPage);
   }, [primaryPage]);
 
   useEffect(() => {
     if (!effectiveUid || !textbookId) return;
-    return watchNote(effectiveUid, textbookId, primaryPage, (note) => setNoteItems(note?.items ?? []));
-  }, [effectiveUid, textbookId, primaryPage]);
+    const unsubs = pagesToShow.map((p) =>
+      watchNote(effectiveUid, textbookId, p, (note) => {
+        setNotesByPage((prev) => {
+          const next = new Map(prev);
+          next.set(p, note?.items ?? []);
+          return next;
+        });
+      }),
+    );
+    return () => unsubs.forEach((u) => u());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveUid, textbookId, pagesKey]);
 
-  const persistNotes = (items: PlacedNote[], immediate = false) => {
+  const persistNotesForPage = (page: number, items: PlacedNote[], immediate = false) => {
     if (!effectiveUid || !textbookId) return;
     if (noteSaveTimer.current) clearTimeout(noteSaveTimer.current);
-    const save = () => saveNoteItems(effectiveUid, textbookId, primaryPage, items);
+    const save = () => saveNoteItems(effectiveUid, textbookId, page, items);
     if (immediate) save();
     else noteSaveTimer.current = setTimeout(save, 500);
   };
@@ -168,9 +195,10 @@ export default function TextbookViewerPage() {
     const perPageMaxW = availW / pageCount;
     const widthFromHeight = availH / aspect;
     const fit = Math.min(perPageMaxW, widthFromHeight);
-    return Math.max(120, fit * ZOOM_LEVELS[zoomIndex]);
-  }, [containerSize, aspect, layoutPageCount, zoomIndex]);
+    return Math.max(120, fit * zoom);
+  }, [containerSize, aspect, layoutPageCount, zoom]);
   const boxHeight = boxWidth * aspect;
+  const spreadWidth = boxWidth * layoutPageCount + PAGE_GAP * (layoutPageCount - 1);
 
   const animateTo = (page: number) => {
     setPageOpacity(0);
@@ -211,6 +239,10 @@ export default function TextbookViewerPage() {
     if (m === "spread") setCurrentPage((p) => spreadStart(p));
   };
 
+  const handleZoomChange = (delta: number) => {
+    setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round((z + delta) * 100) / 100)));
+  };
+
   const handleSearch = async (q: string) => {
     if (!pdf) return;
     const query = q.trim().toLowerCase();
@@ -247,7 +279,8 @@ export default function TextbookViewerPage() {
   };
 
   const handleMagnifierConfirm = (el: HTMLDivElement) => {
-    setZoomIndex((i) => Math.min(ZOOM_LEVELS.length - 1, Math.max(i, 4)));
+    const targetZoom = Math.min(MAX_ZOOM, zoom / Math.max(magnifierRect.fw, magnifierRect.fh));
+    setZoom(targetZoom);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         el.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
@@ -303,35 +336,45 @@ export default function TextbookViewerPage() {
     });
   };
 
-  const handleCreateNote = (x: number, y: number) => {
+  const handleCreateNote = (page: number, x: number, y: number) => {
     if (readOnly) return;
     const id = `n${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
-    const next = [...noteItems, { id, x, y, text: "" }];
-    setNoteItems(next);
+    const current = notesByPage.get(page) ?? [];
+    const next = [...current, { id, x, y, text: "" }];
+    setNotesByPage((prev) => new Map(prev).set(page, next));
+    setActiveNotePage(page);
     setActiveNoteId(id);
-    persistNotes(next, true);
+    persistNotesForPage(page, next, true);
     setTool("none"); // 한 번 찍으면 자동으로 노트 도구가 꺼짐 (계속 새 메모가 생기는 것 방지)
   };
+  const handleSelectNote = (page: number, id: string) => {
+    setActiveNotePage(page);
+    setActiveNoteId(id);
+  };
   const handleUpdateNoteText = (id: string, text: string) => {
-    const next = noteItems.map((n) => (n.id === id ? { ...n, text } : n));
-    setNoteItems(next);
-    persistNotes(next);
+    const current = notesByPage.get(activeNotePage) ?? [];
+    const next = current.map((n) => (n.id === id ? { ...n, text } : n));
+    setNotesByPage((prev) => new Map(prev).set(activeNotePage, next));
+    persistNotesForPage(activeNotePage, next);
   };
   const handleChangeNoteFontSize = (id: string, fontSize: number) => {
-    const next = noteItems.map((n) => (n.id === id ? { ...n, fontSize } : n));
-    setNoteItems(next);
-    persistNotes(next);
+    const current = notesByPage.get(activeNotePage) ?? [];
+    const next = current.map((n) => (n.id === id ? { ...n, fontSize } : n));
+    setNotesByPage((prev) => new Map(prev).set(activeNotePage, next));
+    persistNotesForPage(activeNotePage, next);
   };
-  const handleMoveNote = (id: string, x: number, y: number) => {
-    const next = noteItems.map((n) => (n.id === id ? { ...n, x, y } : n));
-    setNoteItems(next);
-    persistNotes(next);
+  const handleMoveNote = (page: number, id: string, x: number, y: number) => {
+    const current = notesByPage.get(page) ?? [];
+    const next = current.map((n) => (n.id === id ? { ...n, x, y } : n));
+    setNotesByPage((prev) => new Map(prev).set(page, next));
+    persistNotesForPage(page, next);
   };
   const handleDeleteNote = (id: string) => {
-    const next = noteItems.filter((n) => n.id !== id);
-    setNoteItems(next);
+    const current = notesByPage.get(activeNotePage) ?? [];
+    const next = current.filter((n) => n.id !== id);
+    setNotesByPage((prev) => new Map(prev).set(activeNotePage, next));
     if (activeNoteId === id) setActiveNoteId(null);
-    persistNotes(next, true);
+    persistNotesForPage(activeNotePage, next, true);
   };
 
   if (error) {
@@ -368,15 +411,14 @@ export default function TextbookViewerPage() {
       <div className="flex h-full flex-col">
         {readOnly && (
           <div className="bg-amber-50 px-4 py-1.5 text-center text-xs font-semibold text-amber-700">
-            👀 {location.state?.studentName ?? "학생"}의 학습 화면을 보고 있어요 (읽기 전용)
+            👀 {location.state?.studentName ?? "학생"}의 학습 화면을 실시간으로 보고 있어요 (읽기 전용)
           </div>
         )}
         <Toolbar
           viewMode={viewMode}
           onViewModeChange={handleViewModeChange}
-          zoomIndex={zoomIndex}
-          zoomLevels={ZOOM_LEVELS}
-          onZoomChange={setZoomIndex}
+          zoom={zoom}
+          onZoomChange={handleZoomChange}
           tool={tool}
           onToolChange={setTool}
           color={color}
@@ -402,9 +444,9 @@ export default function TextbookViewerPage() {
 
           <div ref={containerRef} className="relative flex-1 overflow-hidden bg-slate-200">
             <div className="absolute inset-0 overflow-auto">
-              <div className="flex min-h-full items-center justify-center p-6">
+              <div className="flex min-h-full items-center justify-center p-4">
                 <div
-                  className="flex shadow-2xl"
+                  className="relative flex shadow-2xl"
                   style={{ gap: PAGE_GAP, opacity: pageOpacity, transition: "opacity 120ms" }}
                 >
                   {viewMode === "spread" && pagesToShow.length === 1 && pagesToShow[0] === 1 && (
@@ -430,24 +472,25 @@ export default function TextbookViewerPage() {
                         onDraw={() => {
                           lastDrawnPage.current = n;
                         }}
-                        showNotes={n === primaryPage}
-                        noteItems={n === primaryPage ? noteItems : []}
-                        activeNoteId={n === primaryPage ? activeNoteId : null}
-                        onCreateNote={handleCreateNote}
-                        onSelectNote={setActiveNoteId}
-                        onMoveNote={handleMoveNote}
+                        showNotes
+                        noteItems={notesByPage.get(n) ?? []}
+                        activeNoteId={n === activeNotePage ? activeNoteId : null}
+                        onCreateNote={(x, y) => handleCreateNote(n, x, y)}
+                        onSelectNote={(id) => handleSelectNote(n, id)}
+                        onMoveNote={(id, x, y) => handleMoveNote(n, id, x, y)}
                       />
-                      {magnifierMode && n === primaryPage && (
-                        <MagnifierOverlay
-                          rect={magnifierRect}
-                          boxWidth={boxWidth}
-                          boxHeight={boxHeight}
-                          onChange={setMagnifierRect}
-                          onConfirm={handleMagnifierConfirm}
-                        />
-                      )}
                     </div>
                   ))}
+
+                  {magnifierMode && (
+                    <MagnifierOverlay
+                      rect={magnifierRect}
+                      boxWidth={spreadWidth}
+                      boxHeight={boxHeight}
+                      onChange={setMagnifierRect}
+                      onConfirm={handleMagnifierConfirm}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -466,12 +509,12 @@ export default function TextbookViewerPage() {
           </div>
 
           <NotesPanel
-            items={noteItems}
+            items={notesByPage.get(activeNotePage) ?? []}
             activeId={activeNoteId}
             readOnly={readOnly}
             noteToolActive={tool === "note"}
             studentLabel={readOnly ? location.state?.studentName : undefined}
-            onSelect={setActiveNoteId}
+            onSelect={(id) => setActiveNoteId(id)}
             onChangeText={handleUpdateNoteText}
             onChangeFontSize={handleChangeNoteFontSize}
             onDelete={handleDeleteNote}

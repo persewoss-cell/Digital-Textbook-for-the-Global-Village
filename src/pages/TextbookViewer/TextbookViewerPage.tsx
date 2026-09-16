@@ -16,6 +16,7 @@ import { BookPage, type BookPageHandle } from "./BookPage";
 import { Toolbar, type SearchResult } from "./Toolbar";
 import { TocPanel } from "./TocPanel";
 import { NotesPanel } from "./NotesPanel";
+import { MagnifierOverlay, type MagnifierRect } from "./MagnifierOverlay";
 
 const ZOOM_LEVELS = [0.6, 0.8, 1, 1.25, 1.5, 2];
 const FIT_ZOOM_INDEX = 2;
@@ -23,7 +24,8 @@ const PAGE_GAP = 10;
 const CONTAINER_PADDING = 24;
 const BOTTOM_BAR_SPACE = 72;
 
-const pairStart = (n: number) => (n % 2 === 1 ? n : n - 1);
+// 표지(1쪽)는 혼자 오른쪽에 보이고, 2쪽부터 (2,3) (4,5) (6,7)... 순서로 짝을 이룬다.
+const spreadStart = (n: number) => (n <= 1 ? 1 : n % 2 === 0 ? n : n - 1);
 
 export default function TextbookViewerPage() {
   const { roomId, textbookId } = useParams<{ roomId: string; textbookId: string }>();
@@ -80,6 +82,9 @@ export default function TextbookViewerPage() {
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const noteSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [magnifierMode, setMagnifierMode] = useState(false);
+  const [magnifierRect, setMagnifierRect] = useState<MagnifierRect>({ fx: 0.3, fy: 0.3, fw: 0.4, fh: 0.4 });
+
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ w: 900, h: 600 });
   const pageRefs = useRef<Map<number, BookPageHandle>>(new Map());
@@ -127,11 +132,15 @@ export default function TextbookViewerPage() {
 
   const pagesToShow = useMemo(() => {
     if (viewMode === "single") return [currentPage];
-    const start = pairStart(currentPage);
+    const start = spreadStart(currentPage);
+    if (start === 1) return [1];
     const arr = [start];
     if (start + 1 <= numPages) arr.push(start + 1);
     return arr;
   }, [viewMode, currentPage, numPages]);
+
+  // 표지 혼자일 때도 다음 스프레드와 같은 크기를 유지하기 위해 항상 2쪽 기준으로 계산한다.
+  const layoutPageCount = viewMode === "spread" ? 2 : 1;
 
   const primaryPage = pagesToShow[0] ?? currentPage;
 
@@ -153,14 +162,14 @@ export default function TextbookViewerPage() {
   };
 
   const boxWidth = useMemo(() => {
-    const pageCount = pagesToShow.length;
+    const pageCount = layoutPageCount;
     const availW = Math.max(100, containerSize.w - CONTAINER_PADDING * 2 - PAGE_GAP * (pageCount - 1));
     const availH = Math.max(100, containerSize.h - CONTAINER_PADDING * 2 - BOTTOM_BAR_SPACE);
     const perPageMaxW = availW / pageCount;
     const widthFromHeight = availH / aspect;
     const fit = Math.min(perPageMaxW, widthFromHeight);
     return Math.max(120, fit * ZOOM_LEVELS[zoomIndex]);
-  }, [containerSize, aspect, pagesToShow.length, zoomIndex]);
+  }, [containerSize, aspect, layoutPageCount, zoomIndex]);
   const boxHeight = boxWidth * aspect;
 
   const animateTo = (page: number) => {
@@ -176,21 +185,30 @@ export default function TextbookViewerPage() {
 
   const jumpTo = (n: number) => {
     const clamped = Math.max(1, Math.min(numPages, n));
-    animateTo(viewMode === "spread" ? pairStart(clamped) : clamped);
+    animateTo(viewMode === "spread" ? spreadStart(clamped) : clamped);
   };
   const goNext = () => {
-    const step = viewMode === "spread" ? 2 : 1;
-    const max = viewMode === "spread" ? pairStart(numPages) : numPages;
-    animateTo(Math.min(max, currentPage + step));
+    if (viewMode === "single") {
+      animateTo(Math.min(numPages, currentPage + 1));
+      return;
+    }
+    const cur = spreadStart(currentPage);
+    const next = cur === 1 ? 2 : cur + 2;
+    animateTo(Math.min(spreadStart(numPages), next));
   };
   const goPrev = () => {
-    const step = viewMode === "spread" ? 2 : 1;
-    animateTo(Math.max(1, currentPage - step));
+    if (viewMode === "single") {
+      animateTo(Math.max(1, currentPage - 1));
+      return;
+    }
+    const cur = spreadStart(currentPage);
+    const prev = cur <= 2 ? 1 : cur - 2;
+    animateTo(Math.max(1, prev));
   };
 
   const handleViewModeChange = (m: "single" | "spread") => {
     setViewMode(m);
-    if (m === "spread") setCurrentPage((p) => pairStart(p));
+    if (m === "spread") setCurrentPage((p) => spreadStart(p));
   };
 
   const handleSearch = async (q: string) => {
@@ -226,6 +244,16 @@ export default function TextbookViewerPage() {
   const handleRedo = () => {
     const target = lastDrawnPage.current ?? primaryPage;
     pageRefs.current.get(target)?.redo();
+  };
+
+  const handleMagnifierConfirm = (el: HTMLDivElement) => {
+    setZoomIndex((i) => Math.min(ZOOM_LEVELS.length - 1, Math.max(i, 4)));
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+        setMagnifierMode(false);
+      });
+    });
   };
 
   const handleCapture = () => {
@@ -350,6 +378,11 @@ export default function TextbookViewerPage() {
           searchResults={searchResults}
           onJumpToResult={jumpTo}
           onCapture={handleCapture}
+          magnifierMode={magnifierMode}
+          onToggleMagnifier={() => {
+            setMagnifierMode((v) => !v);
+            setTool("none");
+          }}
           readOnly={readOnly}
         />
 
@@ -363,32 +396,45 @@ export default function TextbookViewerPage() {
                   className="flex shadow-2xl"
                   style={{ gap: PAGE_GAP, opacity: pageOpacity, transition: "opacity 120ms" }}
                 >
+                  {viewMode === "spread" && pagesToShow.length === 1 && pagesToShow[0] === 1 && (
+                    <div style={{ width: boxWidth, height: boxHeight }} />
+                  )}
                   {pagesToShow.map((n) => (
-                    <BookPage
-                      key={n}
-                      ref={(el) => {
-                        if (el) pageRefs.current.set(n, el);
-                        else pageRefs.current.delete(n);
-                      }}
-                      pdf={pdf}
-                      pageNumber={n}
-                      boxWidth={boxWidth}
-                      boxHeight={boxHeight}
-                      uid={effectiveUid}
-                      textbookId={textbookId!}
-                      tool={tool}
-                      color={color}
-                      eraserSize={eraserSize}
-                      readOnly={readOnly}
-                      onDraw={() => {
-                        lastDrawnPage.current = n;
-                      }}
-                      showNotes={n === primaryPage}
-                      noteItems={n === primaryPage ? noteItems : []}
-                      activeNoteId={n === primaryPage ? activeNoteId : null}
-                      onCreateNote={handleCreateNote}
-                      onSelectNote={setActiveNoteId}
-                    />
+                    <div key={n} className="relative" style={{ width: boxWidth, height: boxHeight }}>
+                      <BookPage
+                        ref={(el) => {
+                          if (el) pageRefs.current.set(n, el);
+                          else pageRefs.current.delete(n);
+                        }}
+                        pdf={pdf}
+                        pageNumber={n}
+                        boxWidth={boxWidth}
+                        boxHeight={boxHeight}
+                        uid={effectiveUid}
+                        textbookId={textbookId!}
+                        tool={tool}
+                        color={color}
+                        eraserSize={eraserSize}
+                        readOnly={readOnly}
+                        onDraw={() => {
+                          lastDrawnPage.current = n;
+                        }}
+                        showNotes={n === primaryPage}
+                        noteItems={n === primaryPage ? noteItems : []}
+                        activeNoteId={n === primaryPage ? activeNoteId : null}
+                        onCreateNote={handleCreateNote}
+                        onSelectNote={setActiveNoteId}
+                      />
+                      {magnifierMode && n === primaryPage && (
+                        <MagnifierOverlay
+                          rect={magnifierRect}
+                          boxWidth={boxWidth}
+                          boxHeight={boxHeight}
+                          onChange={setMagnifierRect}
+                          onConfirm={handleMagnifierConfirm}
+                        />
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>

@@ -8,11 +8,18 @@ export interface AnnotationLayerHandle {
   getCanvas: () => HTMLCanvasElement | null;
 }
 
+function strokeStyleFor(tool: Stroke["tool"], width: number) {
+  // 연필(pen)과 색펜(colorPen) 둘 다 얇고 또렷한 볼펜/연필 느낌으로 그린다.
+  // (예전의 두껍고 반투명한 "형광펜" 스타일은 쓰지 않음)
+  return { width, alpha: 1 };
+}
+
 function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, w: number, h: number) {
   if (stroke.points.length < 2) return;
+  const { width, alpha } = strokeStyleFor(stroke.tool, stroke.width);
   ctx.strokeStyle = stroke.color;
-  ctx.globalAlpha = stroke.tool === "highlighter" ? 0.35 : 1;
-  ctx.lineWidth = stroke.width;
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = width;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.beginPath();
@@ -62,6 +69,7 @@ export const AnnotationLayer = forwardRef<
   const erasing = useRef<Set<number> | null>(null);
   const history = useRef<Stroke[][]>([]);
   const future = useRef<Stroke[][]>([]);
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     strokesRef.current = strokes;
@@ -135,7 +143,7 @@ export const AnnotationLayer = forwardRef<
     ];
   };
 
-  const strokeWidth = tool === "highlighter" ? 16 : 3;
+  const strokeWidth = tool === "eraser" ? 0 : tool === "colorPen" ? 2.5 : 2;
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (readOnly || tool === "none") return;
@@ -156,6 +164,9 @@ export const AnnotationLayer = forwardRef<
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (tool === "eraser") {
+      setHoverPos({ x: e.clientX, y: e.clientY });
+    }
     if (tool === "eraser" && erasing.current) {
       const [px, py] = toLocal(e.clientX, e.clientY);
       strokes.forEach((s, i) => {
@@ -170,7 +181,7 @@ export const AnnotationLayer = forwardRef<
     if (!drawing.current) return;
     const [x, y] = toLocal(e.clientX, e.clientY);
     drawing.current.push(x / canvasRef.current!.width, y / canvasRef.current!.height);
-    redraw({ tool: tool as "pen" | "highlighter", color, width: strokeWidth, points: drawing.current });
+    redraw({ tool: tool as "pen" | "colorPen", color, width: strokeWidth, points: drawing.current });
   };
 
   const handlePointerUp = () => {
@@ -185,25 +196,46 @@ export const AnnotationLayer = forwardRef<
     const points = drawing.current;
     drawing.current = null;
     if (points.length < 4) return; // ignore accidental taps
-    commit([...strokes, { tool: tool as "pen" | "highlighter", color, width: strokeWidth, points }]);
+    commit([...strokes, { tool: tool as "pen" | "colorPen", color, width: strokeWidth, points }]);
   };
 
   const interactive = !readOnly && tool !== "none";
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="absolute inset-0"
-      style={{
-        touchAction: interactive ? "none" : "auto",
-        pointerEvents: interactive ? "auto" : "none",
-        cursor:
-          tool === "eraser" ? "cell" : tool === "pen" || tool === "highlighter" ? "crosshair" : "default",
-      }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0"
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+        style={{
+          touchAction: interactive ? "none" : "auto",
+          pointerEvents: interactive ? "auto" : "none",
+          userSelect: "none",
+          WebkitUserSelect: "none",
+          WebkitTouchCallout: "none",
+          ...({ WebkitUserDrag: "none" } as Record<string, string>),
+          cursor: tool === "eraser" ? "none" : tool === "pen" || tool === "colorPen" ? "crosshair" : "default",
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={() => {
+          setHoverPos(null);
+          handlePointerUp();
+        }}
+      />
+      {tool === "eraser" && hoverPos && !readOnly && (
+        <div
+          className="pointer-events-none fixed z-50 rounded-full border-2 border-slate-500 bg-slate-400/20"
+          style={{
+            left: hoverPos.x - eraserSize,
+            top: hoverPos.y - eraserSize,
+            width: eraserSize * 2,
+            height: eraserSize * 2,
+          }}
+        />
+      )}
+    </>
   );
 });

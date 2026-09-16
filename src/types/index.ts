@@ -38,11 +38,11 @@ export interface TextbookDoc {
   uploadedAt: number;
 }
 
-export type DrawTool = "pen" | "highlighter" | "eraser";
+export type DrawTool = "pen" | "colorPen" | "eraser";
 export type AnnotationTool = DrawTool | "note" | "none";
 
 export interface Stroke {
-  tool: "pen" | "highlighter";
+  tool: "pen" | "colorPen";
   color: string;
   width: number;
   points: number[]; // flattened [x1,y1,x2,y2,...] in 0-1 normalized page coordinates

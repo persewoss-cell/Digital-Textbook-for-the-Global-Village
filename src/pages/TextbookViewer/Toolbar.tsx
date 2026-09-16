@@ -31,6 +31,8 @@ export function Toolbar({
   searchResults,
   onJumpToResult,
   onCapture,
+  magnifierMode,
+  onToggleMagnifier,
   readOnly,
 }: {
   viewMode: "single" | "spread";
@@ -50,6 +52,8 @@ export function Toolbar({
   searchResults: SearchResult[];
   onJumpToResult: (page: number) => void;
   onCapture: () => void;
+  magnifierMode: boolean;
+  onToggleMagnifier: () => void;
   readOnly: boolean;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -88,6 +92,13 @@ export function Toolbar({
         >
           ＋
         </button>
+        <button
+          className={`btn-ghost px-2 ${magnifierMode ? "bg-brand-100 text-brand-700" : ""}`}
+          title="돋보기로 부분 확대"
+          onClick={onToggleMagnifier}
+        >
+          🔍
+        </button>
       </div>
 
       <div className="mx-1 h-5 w-px bg-slate-200" />
@@ -98,19 +109,19 @@ export function Toolbar({
           <div className="flex items-center gap-1">
             <button
               className={`btn-ghost px-2 ${tool === "pen" ? "bg-brand-100 text-brand-700" : ""}`}
-              title="펜"
+              title="연필"
               onClick={() => onToolChange(tool === "pen" ? "none" : "pen")}
             >
               ✏️
             </button>
             <button
-              className={`btn-ghost px-2 ${tool === "highlighter" ? "bg-brand-100 text-brand-700" : ""}`}
-              title="형광펜"
-              onClick={() => onToolChange(tool === "highlighter" ? "none" : "highlighter")}
+              className={`btn-ghost px-2 ${tool === "colorPen" ? "bg-brand-100 text-brand-700" : ""}`}
+              title="색펜"
+              onClick={() => onToolChange(tool === "colorPen" ? "none" : "colorPen")}
             >
-              🖍️
+              🖊️
             </button>
-            {(tool === "pen" || tool === "highlighter") &&
+            {(tool === "pen" || tool === "colorPen") &&
               COLORS.map((c) => (
                 <button
                   key={c}

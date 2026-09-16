@@ -1,7 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ref, uploadBytes } from "firebase/storage";
-import { storage } from "@/firebase";
 import { AppShell } from "@/components/AppShell";
 import {
   createTextbookDoc,
@@ -88,59 +86,76 @@ function TextbooksSection() {
   const [grade, setGrade] = useState<Grade>(3);
   const [subject, setSubject] = useState("");
   const [title, setTitle] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [fileName, setFileName] = useState("");
+  const [pageCount, setPageCount] = useState<number | "">("");
+  const [detecting, setDetecting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => watchAllTextbooks(setTextbooks), []);
 
-  const handleUpload = async () => {
-    if (!file || !title.trim()) {
-      setUploadError("제목과 PDF 파일을 모두 입력해 주세요.");
+  const handlePickFile = async (f: File | null) => {
+    if (!f) return;
+    setFileName(f.name);
+    setDetecting(true);
+    try {
+      const arrayBuffer = await f.arrayBuffer();
+      const count = await getPdfPageCountFromBuffer(arrayBuffer);
+      setPageCount(count);
+    } catch {
+      setPageCount("");
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!title.trim() || !fileName.trim()) {
+      setFormError("제목과 파일 이름을 모두 입력해 주세요.");
       return;
     }
-    setUploadError(null);
-    setUploading(true);
+    setFormError(null);
+    setSaving(true);
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const pageCount = await getPdfPageCountFromBuffer(arrayBuffer);
-
       const id =
         typeof crypto.randomUUID === "function"
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const storagePath = `textbooks/${grade}/${id}.pdf`;
-      await uploadBytes(ref(storage, storagePath), file, { contentType: "application/pdf" });
-
       await createTextbookDoc({
         id,
         grade,
         subject: subject.trim() || "지구마을",
         title: title.trim(),
-        storagePath,
-        pageCount,
+        filePath: `/textbooks/${grade}/${fileName.trim()}`,
+        pageCount: pageCount === "" ? 0 : pageCount,
       });
-
       setTitle("");
       setSubject("");
-      setFile(null);
+      setFileName("");
+      setPageCount("");
     } catch {
-      setUploadError("업로드 중 문제가 발생했어요. PDF 파일이 맞는지 확인해 주세요.");
+      setFormError("저장 중 문제가 발생했어요.");
     } finally {
-      setUploading(false);
+      setSaving(false);
     }
   };
 
   const remove = async (id: string) => {
-    if (!confirm("이 교과서를 삭제할까요?")) return;
+    if (!confirm("이 교과서 정보를 삭제할까요? (실제 PDF 파일은 남아있어요)")) return;
     await deleteTextbookDoc(id);
   };
 
   return (
     <div>
       <div className="card mb-6 p-4">
-        <h3 className="mb-3 font-semibold">새 교과서 업로드</h3>
+        <h3 className="mb-1 font-semibold">새 교과서 등록</h3>
+        <p className="mb-3 text-xs text-slate-500">
+          무료 요금제는 파일 저장 서비스(Storage)를 쓸 수 없어서, PDF 파일 자체는 이 화면에서 바로
+          업로드할 수 없어요. 대신 <b>PDF 파일을 채팅으로 Claude에게 보내주시면</b> 프로젝트에 추가해
+          드려요. 아래에서 PDF를 선택하면 쪽수를 자동으로 읽어오고, 파일 이름을 알려드릴게요 — 그
+          파일을 저한테 보내실 때 같은 이름으로 보내주시면 돼요.
+        </p>
         <div className="flex flex-wrap items-end gap-2">
           <div>
             <label className="label">학년</label>
@@ -161,14 +176,43 @@ function TextbooksSection() {
             <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 지구마을 3학년 1학기" />
           </div>
           <div>
-            <label className="label">PDF 파일</label>
-            <input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <label className="label">PDF 파일 선택 (쪽수 자동 확인용)</label>
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => handlePickFile(e.target.files?.[0] ?? null)}
+            />
           </div>
-          <button className="btn-primary" disabled={uploading} onClick={handleUpload}>
-            {uploading ? "업로드 중..." : "업로드"}
+        </div>
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div>
+            <label className="label">파일 이름</label>
+            <input
+              className="input w-64"
+              value={fileName}
+              onChange={(e) => setFileName(e.target.value)}
+              placeholder="예: earth-village-3-1.pdf"
+            />
+          </div>
+          <div>
+            <label className="label">쪽수</label>
+            <input
+              className="input w-24"
+              value={detecting ? "확인 중..." : pageCount}
+              onChange={(e) => setPageCount(e.target.value === "" ? "" : Number(e.target.value))}
+              disabled={detecting}
+            />
+          </div>
+          <button className="btn-primary" disabled={saving} onClick={handleSave}>
+            {saving ? "저장 중..." : "등록하기"}
           </button>
         </div>
-        {uploadError && <p className="mt-2 text-sm text-red-500">{uploadError}</p>}
+        {fileName && (
+          <p className="mt-2 text-xs text-brand-700">
+            📎 이 이름으로 PDF 파일을 채팅에 보내주세요: <b>{fileName}</b> ({grade}학년용)
+          </p>
+        )}
+        {formError && <p className="mt-2 text-sm text-red-500">{formError}</p>}
       </div>
 
       <div className="space-y-3">

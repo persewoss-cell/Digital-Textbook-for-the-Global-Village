@@ -32,8 +32,15 @@
 ## 기술 스택
 
 - React 18 + TypeScript + Vite + Tailwind CSS, React Router
-- Firebase Auth(**익명 인증만** 사용, 로그인 화면 없음) / Firestore / Storage — **Cloud Functions 없음**
+- Firebase Auth(**익명 인증만** 사용, 로그인 화면 없음) / Firestore — **Cloud Functions, Storage 없음**
 - pdfjs-dist(PDF 렌더링), react-pageflip-enhanced(책 넘김 UI)
+
+### 교과서 PDF는 어디에 저장되나요?
+
+Firebase Storage(파일 저장 서비스)는 2024년 10월부터 **무료 Spark 요금제에서 아예 쓸 수 없게**
+바뀌었어요(버킷 생성 자체가 유료 Blaze 요금제 전용). 그래서 이 프로젝트는 Storage 대신, 교과서
+PDF 파일을 `public/textbooks/{학년}/` 폴더에 직접 넣어두고 **Firebase Hosting이 정적 파일로
+그대로 서빙**하도록 만들었어요. Hosting은 Spark 요금제에서도 완전히 무료예요.
 
 ## 왜 이렇게 설계했나요? (중요 — 보안 수준 안내)
 
@@ -54,8 +61,8 @@ Firebase의 Cloud Functions(서버 코드)는 무료 Spark 요금제에서 아�
 1. [Firebase 콘솔](https://console.firebase.google.com/)에서 새 프로젝트를 만듭니다 (무료 Spark 요금제 그대로 사용 가능).
 2. **Authentication** → 로그인 방법에서 **익명(Anonymous)**을 사용 설정합니다. (이메일/비밀번호는 필요 없어요)
 3. **Firestore Database**를 만듭니다 (규칙은 이 저장소의 `firestore.rules`를 배포하면 됩니다).
-4. **Storage**를 만듭니다 (교과서 PDF 저장용, 규칙은 `storage.rules` 배포).
-5. 프로젝트 설정 > 일반 > 내 앱에서 웹 앱을 추가하고, 표시되는 설정 값을 `.env` 파일에 채워넣습니다 (`.env.example` 참고).
+4. **Storage는 만들지 않아도 됩니다** (무료 요금제에서 지원되지 않고, 이 프로젝트는 쓰지도 않아요).
+5. 프로젝트 설정 > 일반 > 내 앱에서 웹 앱을 추가하고, 표시되는 설정 값을 `.env` 파일에 채워넣습니다 (`.env.example` 참고, `storageBucket` 값은 필요 없어요).
 6. `.firebaserc`의 `REPLACE_WITH_YOUR_FIREBASE_PROJECT_ID`를 실제 프로젝트 ID로 바꿉니다.
 
 ```bash
@@ -65,7 +72,7 @@ firebase login
 npm install                     # 의존성 설치
 cp .env.example .env            # 값 채워넣기 (마스터 비밀번호도 원하면 여기서 변경)
 
-firebase deploy --only firestore:rules,storage:rules
+firebase deploy --only firestore:rules
 npm run build
 firebase deploy --only hosting
 ```
@@ -78,11 +85,17 @@ cp .env.example .env   # Firebase 웹 설정 값 채우기
 npm run dev
 ```
 
-## 교과서(PDF) 업로드 방법
+## 교과서(PDF) 등록 방법
 
-1. `/admin`에서 마스터 비밀번호(기본 `7279`, `.env`의 `VITE_ADMIN_MASTER_PASSWORD`로 변경 가능)를 입력합니다.
-2. "교과서 관리" 탭에서 학년, 과목/시리즈명, 교재 제목을 입력하고 PDF 파일을 선택해 업로드합니다.
-3. 업로드된 교과서의 "목차 관리"를 눌러 단원 제목과 시작 쪽 번호를 등록하면 왼쪽 목차에 표시됩니다.
+Storage를 쓰지 않기 때문에, PDF 파일 자체는 관리자 화면에서 업로드하는 게 아니라 **프로젝트
+파일로 직접 추가**해야 해요.
+
+1. `public/textbooks/{학년}/` 폴더에 PDF 파일을 넣습니다 (예: `public/textbooks/3/book1.pdf`).
+   Claude에게 채팅으로 파일을 보내면 대신 추가하고 재배포해 줄 수 있어요.
+2. `/admin`에서 마스터 비밀번호(기본 `7279`, `.env`의 `VITE_ADMIN_MASTER_PASSWORD`로 변경 가능)를 입력합니다.
+3. "교과서 관리" 탭에서 PDF 파일을 한 번 선택하면(업로드되지는 않고, 쪽수만 자동으로 읽어와요)
+   학년/과목/제목과 함께 **1번에서 넣은 것과 같은 파일 이름**을 입력하고 "등록하기"를 누릅니다.
+4. 등록된 교과서의 "목차 관리"를 눌러 단원 제목과 시작 쪽 번호를 등록하면 왼쪽 목차에 표시됩니다.
 
 ## 프로젝트 구조
 
@@ -101,7 +114,8 @@ src/
     session.ts                # 익명 인증 부트스트랩, 방 잠금 해제 상태(sessionStorage)
     firestore.ts, pdf.ts
   types/
-firestore.rules / storage.rules / firebase.json
+public/textbooks/{학년}/    # 교과서 PDF 파일 (Firebase Hosting이 정적 파일로 서빙)
+firestore.rules / firebase.json
 ```
 
 ## 설계 메모

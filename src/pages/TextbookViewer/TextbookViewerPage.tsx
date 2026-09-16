@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ref, getDownloadURL } from "firebase/storage";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import HTMLFlipBook from "react-pageflip-enhanced";
-import { storage } from "@/firebase";
 import { AppShell } from "@/components/AppShell";
 import {
   getTextbook,
@@ -100,8 +98,7 @@ export default function TextbookViewerPage() {
         }
         if (cancelled) return;
         setTextbook(doc);
-        const url = await getDownloadURL(ref(storage, doc.storagePath));
-        const pdfDoc = await loadPdf(url);
+        const pdfDoc = await loadPdf(doc.filePath);
         if (cancelled) return;
         setPdf(pdfDoc);
         setNumPages(pdfDoc.numPages);

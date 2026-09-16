@@ -32,7 +32,7 @@ export interface TextbookDoc {
   grade: Grade;
   subject: string;
   title: string;
-  storagePath: string; // Firebase Storage path to the PDF
+  filePath: string; // 정적 파일 경로 (예: /textbooks/3/book.pdf), Firebase Hosting이 그대로 서빙
   pageCount: number | null;
   chapters: ChapterMeta[];
   uploadedAt: number;

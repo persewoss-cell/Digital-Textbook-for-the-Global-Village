@@ -47,7 +47,7 @@ export async function createTextbookDoc(input: {
   grade: Grade;
   subject: string;
   title: string;
-  storagePath: string;
+  filePath: string;
   pageCount: number;
 }) {
   const data: TextbookDoc = {

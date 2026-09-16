@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AnnotationTool } from "./AnnotationLayer";
+import type { AnnotationTool } from "@/types";
 
 export interface SearchResult {
   page: number;
@@ -7,6 +7,11 @@ export interface SearchResult {
 }
 
 const COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7"];
+const ERASER_SIZES = [
+  { label: "S", value: 14 },
+  { label: "M", value: 26 },
+  { label: "L", value: 42 },
+];
 
 export function Toolbar({
   viewMode,
@@ -14,28 +19,18 @@ export function Toolbar({
   zoomIndex,
   zoomLevels,
   onZoomChange,
-  currentPage,
-  totalPages,
-  onPrev,
-  onNext,
-  onJump,
   tool,
   onToolChange,
   color,
   onColorChange,
-  onClearPage,
-  bookmarked,
-  onToggleBookmark,
-  isSpeaking,
-  onToggleTTS,
+  eraserSize,
+  onEraserSizeChange,
+  onUndo,
+  onRedo,
   onSearch,
   searchResults,
   onJumpToResult,
-  highContrast,
-  onToggleHighContrast,
-  rulerOn,
-  onToggleRuler,
-  onPrint,
+  onCapture,
   readOnly,
 }: {
   viewMode: "single" | "spread";
@@ -43,65 +38,25 @@ export function Toolbar({
   zoomIndex: number;
   zoomLevels: number[];
   onZoomChange: (i: number) => void;
-  currentPage: number;
-  totalPages: number;
-  onPrev: () => void;
-  onNext: () => void;
-  onJump: (page: number) => void;
   tool: AnnotationTool;
   onToolChange: (t: AnnotationTool) => void;
   color: string;
   onColorChange: (c: string) => void;
-  onClearPage: () => void;
-  bookmarked: boolean;
-  onToggleBookmark: () => void;
-  isSpeaking: boolean;
-  onToggleTTS: () => void;
+  eraserSize: number;
+  onEraserSizeChange: (n: number) => void;
+  onUndo: () => void;
+  onRedo: () => void;
   onSearch: (q: string) => void;
   searchResults: SearchResult[];
   onJumpToResult: (page: number) => void;
-  highContrast: boolean;
-  onToggleHighContrast: () => void;
-  rulerOn: boolean;
-  onToggleRuler: () => void;
-  onPrint: () => void;
+  onCapture: () => void;
   readOnly: boolean;
 }) {
-  const [jumpValue, setJumpValue] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
-      {/* page nav */}
-      <div className="flex items-center gap-1">
-        <button className="btn-ghost px-2" title="이전 쪽" onClick={onPrev}>
-          ◀
-        </button>
-        <form
-          className="flex items-center gap-1"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const n = Number(jumpValue);
-            if (n >= 1 && n <= totalPages) onJump(n);
-            setJumpValue("");
-          }}
-        >
-          <input
-            className="w-14 rounded-lg border border-slate-300 px-2 py-1 text-center text-sm"
-            placeholder={`${currentPage}`}
-            value={jumpValue}
-            onChange={(e) => setJumpValue(e.target.value.replace(/[^0-9]/g, ""))}
-          />
-        </form>
-        <span className="text-sm text-slate-500">/ {totalPages}쪽</span>
-        <button className="btn-ghost px-2" title="다음 쪽" onClick={onNext}>
-          ▶
-        </button>
-      </div>
-
-      <div className="mx-1 h-5 w-px bg-slate-200" />
-
       {/* view mode */}
       <div className="flex overflow-hidden rounded-lg border border-slate-300">
         <button
@@ -122,16 +77,10 @@ export function Toolbar({
 
       {/* zoom */}
       <div className="flex items-center gap-1">
-        <button
-          className="btn-ghost px-2"
-          title="축소"
-          onClick={() => onZoomChange(Math.max(0, zoomIndex - 1))}
-        >
+        <button className="btn-ghost px-2" title="축소" onClick={() => onZoomChange(Math.max(0, zoomIndex - 1))}>
           －
         </button>
-        <span className="w-10 text-center text-xs text-slate-500">
-          {Math.round(zoomLevels[zoomIndex] * 100)}%
-        </span>
+        <span className="w-10 text-center text-xs text-slate-500">{Math.round(zoomLevels[zoomIndex] * 100)}%</span>
         <button
           className="btn-ghost px-2"
           title="확대"
@@ -161,36 +110,54 @@ export function Toolbar({
             >
               🖍️
             </button>
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                className={`h-5 w-5 rounded-full border-2 ${color === c ? "border-slate-700" : "border-transparent"}`}
-                style={{ backgroundColor: c }}
-                onClick={() => onColorChange(c)}
-                title="색상 선택"
-              />
-            ))}
-            <button className="btn-ghost px-2 text-xs" title="이 쪽 필기 지우기" onClick={onClearPage}>
-              지우기
+            {(tool === "pen" || tool === "highlighter") &&
+              COLORS.map((c) => (
+                <button
+                  key={c}
+                  className={`h-5 w-5 rounded-full border-2 ${color === c ? "border-slate-700" : "border-transparent"}`}
+                  style={{ backgroundColor: c }}
+                  onClick={() => onColorChange(c)}
+                  title="색상 선택"
+                />
+              ))}
+            <button
+              className={`btn-ghost px-2 ${tool === "eraser" ? "bg-brand-100 text-brand-700" : ""}`}
+              title="지우개"
+              onClick={() => onToolChange(tool === "eraser" ? "none" : "eraser")}
+            >
+              🧽
+            </button>
+            {tool === "eraser" &&
+              ERASER_SIZES.map((s) => (
+                <button
+                  key={s.value}
+                  className={`rounded-lg px-1.5 text-xs font-semibold ${eraserSize === s.value ? "bg-brand-100 text-brand-700" : "text-slate-500"}`}
+                  onClick={() => onEraserSizeChange(s.value)}
+                >
+                  {s.label}
+                </button>
+              ))}
+            <button
+              className="btn-ghost px-2 disabled:opacity-30"
+              title="실행 취소"
+              onClick={onUndo}
+            >
+              ↶
+            </button>
+            <button className="btn-ghost px-2 disabled:opacity-30" title="다시 실행" onClick={onRedo}>
+              ↷
+            </button>
+            <button
+              className={`btn-ghost px-2 text-xs ${tool === "note" ? "bg-brand-100 text-brand-700" : ""}`}
+              title="노트(빈칸에 글쓰기)"
+              onClick={() => onToolChange(tool === "note" ? "none" : "note")}
+            >
+              📝 노트
             </button>
           </div>
           <div className="mx-1 h-5 w-px bg-slate-200" />
         </>
       )}
-
-      {/* bookmark */}
-      <button
-        className={`btn-ghost px-2 ${bookmarked ? "text-amber-500" : ""}`}
-        title="책갈피"
-        onClick={onToggleBookmark}
-      >
-        {bookmarked ? "★" : "☆"}
-      </button>
-
-      {/* TTS */}
-      <button className={`btn-ghost px-2 ${isSpeaking ? "text-brand-600" : ""}`} title="읽어주기" onClick={onToggleTTS}>
-        {isSpeaking ? "⏹ 읽기중지" : "🔊 읽어주기"}
-      </button>
 
       {/* search */}
       <div className="relative">
@@ -237,25 +204,8 @@ export function Toolbar({
         )}
       </div>
 
-      <div className="mx-1 h-5 w-px bg-slate-200" />
-
-      {/* accessibility */}
-      <button
-        className={`btn-ghost px-2 text-xs ${highContrast ? "bg-slate-800 text-white" : ""}`}
-        title="고대비 모드"
-        onClick={onToggleHighContrast}
-      >
-        고대비
-      </button>
-      <button
-        className={`btn-ghost px-2 text-xs ${rulerOn ? "bg-brand-100 text-brand-700" : ""}`}
-        title="읽기 자"
-        onClick={onToggleRuler}
-      >
-        읽기자
-      </button>
-      <button className="btn-ghost px-2" title="인쇄" onClick={onPrint}>
-        🖨️
+      <button className="btn-ghost px-2" title="이 쪽 캡처 저장" onClick={onCapture}>
+        📷 캡처저장
       </button>
     </div>
   );

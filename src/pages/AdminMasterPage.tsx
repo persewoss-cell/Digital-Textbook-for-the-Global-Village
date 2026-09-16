@@ -7,7 +7,7 @@ import {
   updateTextbookChapters,
   watchAllTextbooks,
 } from "@/lib/firestore";
-import { getPdfPageCountFromBuffer } from "@/lib/pdf";
+import { getPdfPageCountFromBuffer, loadPdf, suggestChapters } from "@/lib/pdf";
 import { watchRooms } from "@/lib/rooms";
 import { isAdminUnlocked, markAdminUnlocked, clearAdminUnlock } from "@/lib/session";
 import { GRADES, type ChapterMeta, type Grade, type RoomDoc, type TextbookDoc } from "@/types";
@@ -17,6 +17,7 @@ const MASTER_PASSWORD = import.meta.env.VITE_ADMIN_MASTER_PASSWORD || "7279";
 function ChapterEditor({ textbook }: { textbook: TextbookDoc }) {
   const [chapters, setChapters] = useState<ChapterMeta[]>(textbook.chapters);
   const [saving, setSaving] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
 
   useEffect(() => setChapters(textbook.chapters), [textbook.chapters]);
 
@@ -29,8 +30,25 @@ function ChapterEditor({ textbook }: { textbook: TextbookDoc }) {
     }
   };
 
+  const autoSuggest = async () => {
+    setSuggesting(true);
+    try {
+      const pdf = await loadPdf(textbook.filePath);
+      const suggestions = await suggestChapters(pdf);
+      const existingPages = new Set(chapters.map((c) => c.startPage));
+      const merged = [...chapters, ...suggestions.filter((s) => !existingPages.has(s.startPage))];
+      setChapters(merged.sort((a, b) => a.startPage - b.startPage));
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
   return (
     <div className="mt-3 rounded-lg bg-slate-50 p-3">
+      <p className="mb-2 text-xs text-slate-500">
+        자동 추출은 완벽하지 않을 수 있어요. 후보를 넣어드리면 확인하고 제목을 다듬은 뒤 저장해
+        주세요.
+      </p>
       <div className="space-y-2">
         {chapters.map((c, i) => (
           <div key={i} className="flex gap-2">
@@ -72,6 +90,9 @@ function ChapterEditor({ textbook }: { textbook: TextbookDoc }) {
           onClick={() => setChapters([...chapters, { title: "", startPage: 1 }])}
         >
           + 목차 추가
+        </button>
+        <button className="btn-secondary text-xs" disabled={suggesting} onClick={autoSuggest}>
+          {suggesting ? "분석 중..." : "🪄 자동으로 후보 찾기"}
         </button>
         <button className="btn-primary text-xs" disabled={saving} onClick={save}>
           {saving ? "저장 중..." : "목차 저장"}

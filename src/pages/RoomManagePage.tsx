@@ -1,60 +1,51 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import { AppShell } from "@/components/AppShell";
 import { deleteRoomCascade, getRoom, participantKey, watchParticipants } from "@/lib/rooms";
 import { watchProgress, watchTextbooksByGrade } from "@/lib/firestore";
+import { loadPdf } from "@/lib/pdf";
 import { isRoomUnlocked, markRoomUnlocked } from "@/lib/session";
+import { PdfPageCanvas } from "@/pages/TextbookViewer/PdfPageCanvas";
 import type { ParticipantDoc, RoomDoc, StudentProgressDoc, TextbookDoc } from "@/types";
 
-function ParticipantRow({
+const THUMB_WIDTH = 160;
+
+function ParticipantThumbCard({
   roomId,
   participant,
-  textbook,
-  onMonitor,
+  textbookId,
+  pdf,
+  onOpen,
 }: {
   roomId: string;
   participant: ParticipantDoc;
-  textbook: TextbookDoc | null;
-  onMonitor: () => void;
+  textbookId: string;
+  pdf: PDFDocumentProxy | null;
+  onOpen: () => void;
 }) {
   const [progress, setProgress] = useState<StudentProgressDoc | null>(null);
 
-  useEffect(() => {
-    if (!textbook) return;
-    return watchProgress(participantKey(roomId, participant.studentNum), textbook.id, setProgress);
-  }, [roomId, participant.studentNum, textbook]);
+  useEffect(
+    () => watchProgress(participantKey(roomId, participant.studentNum), textbookId, setProgress),
+    [roomId, participant.studentNum, textbookId],
+  );
 
-  const percent =
-    progress && progress.totalPages
-      ? Math.round((Object.keys(progress.viewedPages).length / progress.totalPages) * 100)
-      : 0;
+  const page = progress?.lastPage ?? 1;
 
   return (
-    <tr className="border-b border-slate-100">
-      <td className="px-3 py-2 text-sm">{participant.studentNum}번</td>
-      <td className="px-3 py-2 text-sm font-medium">{participant.name}</td>
-      <td className="px-3 py-2 text-sm text-slate-500">
-        {textbook ? (
-          progress ? (
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-100">
-                <div className="h-full bg-brand-500" style={{ width: `${percent}%` }} />
-              </div>
-              <span>{percent}%</span>
-            </div>
-          ) : (
-            "학습 기록 없음"
-          )
+    <button onClick={onOpen} className="card overflow-hidden text-left transition hover:shadow-md">
+      <div className="flex items-center justify-center bg-slate-100 py-2">
+        {pdf ? (
+          <PdfPageCanvas pdf={pdf} pageNumber={Math.min(page, pdf.numPages)} width={THUMB_WIDTH} />
         ) : (
-          "-"
+          <div style={{ width: THUMB_WIDTH, height: THUMB_WIDTH * 1.4 }} />
         )}
-      </td>
-      <td className="px-3 py-2 text-right">
-        <button className="btn-secondary text-xs" onClick={onMonitor} disabled={!textbook}>
-          학습 현황 보기
-        </button>
-      </td>
-    </tr>
+      </div>
+      <div className="border-t border-slate-100 p-2 text-center text-xs font-semibold text-slate-600">
+        {participant.studentNum}번 {participant.name}
+      </div>
+    </button>
   );
 }
 
@@ -70,6 +61,7 @@ export default function RoomManagePage() {
   const [participants, setParticipants] = useState<ParticipantDoc[]>([]);
   const [textbooks, setTextbooks] = useState<TextbookDoc[]>([]);
   const [textbookId, setTextbookId] = useState("");
+  const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
 
   useEffect(() => {
     if (!roomId) return;
@@ -90,6 +82,21 @@ export default function RoomManagePage() {
     if (!textbookId && textbooks.length > 0) setTextbookId(textbooks[0].id);
   }, [textbooks, textbookId]);
 
+  useEffect(() => {
+    const textbook = textbooks.find((t) => t.id === textbookId);
+    if (!textbook) {
+      setPdf(null);
+      return;
+    }
+    let cancelled = false;
+    loadPdf(textbook.filePath).then((doc) => {
+      if (!cancelled) setPdf(doc);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [textbookId, textbooks]);
+
   const handleUnlock = (e: FormEvent) => {
     e.preventDefault();
     if (!room || !roomId) return;
@@ -103,7 +110,11 @@ export default function RoomManagePage() {
 
   const handleDelete = async () => {
     if (!roomId || !room) return;
-    if (!confirm(`${room.grade}학년 ${room.classNum}반 방을 삭제할까요? 학생들의 필기/노트도 함께 사라지고 되돌릴 수 없어요.`)) {
+    if (
+      !confirm(
+        `${room.grade}학년 ${room.classNum}반 방을 삭제할까요? 학생들의 필기/노트도 함께 사라지고 되돌릴 수 없어요.`,
+      )
+    ) {
       return;
     }
     await deleteRoomCascade(roomId);
@@ -158,8 +169,8 @@ export default function RoomManagePage() {
   }
 
   return (
-    <AppShell badge={`${room.grade}학년 ${room.classNum}반 · 비밀번호 ${room.password}`}>
-      <div className="mx-auto max-w-4xl">
+    <AppShell badge={`${room.grade}학년 ${room.classNum}반`}>
+      <div className="mx-auto max-w-5xl">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">
@@ -173,7 +184,7 @@ export default function RoomManagePage() {
         </div>
 
         <div className="mb-4 flex items-center gap-2">
-          <label className="text-sm text-slate-500">모니터링할 교과서</label>
+          <label className="text-sm text-slate-500">교과서</label>
           <select className="input w-auto" value={textbookId} onChange={(e) => setTextbookId(e.target.value)}>
             {textbooks.map((t) => (
               <option key={t.id} value={t.id}>
@@ -181,41 +192,29 @@ export default function RoomManagePage() {
               </option>
             ))}
           </select>
+          <span className="text-xs text-slate-400">학생들이 지금 보고 있는 쪽이 실시간으로 표시돼요.</span>
         </div>
 
-        <div className="card overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-400">
-              <tr>
-                <th className="px-3 py-2">번호</th>
-                <th className="px-3 py-2">이름</th>
-                <th className="px-3 py-2">진도율</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {participants.map((p) => (
-                <ParticipantRow
-                  key={p.id}
-                  roomId={roomId}
-                  participant={p}
-                  textbook={textbooks.find((t) => t.id === textbookId) ?? null}
-                  onMonitor={() =>
-                    navigate(`/room/${roomId}/textbook?asStudentNum=${p.studentNum}`, {
-                      state: { studentName: p.name },
-                    })
-                  }
-                />
-              ))}
-              {participants.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-6 text-center text-sm text-slate-400">
-                    아직 참여한 학생이 없어요.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {participants.map((p) => (
+            <ParticipantThumbCard
+              key={p.id}
+              roomId={roomId}
+              participant={p}
+              textbookId={textbookId}
+              pdf={pdf}
+              onOpen={() =>
+                navigate(`/room/${roomId}/textbook/${textbookId}?asStudentNum=${p.studentNum}`, {
+                  state: { studentName: p.name },
+                })
+              }
+            />
+          ))}
+          {participants.length === 0 && (
+            <p className="col-span-full rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
+              아직 참여한 학생이 없어요.
+            </p>
+          )}
         </div>
       </div>
     </AppShell>

@@ -5,7 +5,6 @@ import CreateRoomPage from "@/pages/CreateRoomPage";
 import StudentJoinPage from "@/pages/StudentJoinPage";
 import RoomManagePage from "@/pages/RoomManagePage";
 import AdminMasterPage from "@/pages/AdminMasterPage";
-import RoomTextbookHome from "@/pages/RoomTextbookHome";
 import TextbookViewerPage from "@/pages/TextbookViewer/TextbookViewerPage";
 
 export default function App() {
@@ -27,7 +26,6 @@ export default function App() {
 
       <Route path="/room/:roomId/join" element={<StudentJoinPage />} />
       <Route path="/room/:roomId/manage" element={<RoomManagePage />} />
-      <Route path="/room/:roomId/textbook" element={<RoomTextbookHome />} />
       <Route path="/room/:roomId/textbook/:textbookId" element={<TextbookViewerPage />} />
 
       <Route path="*" element={<RoomLobbyPage />} />

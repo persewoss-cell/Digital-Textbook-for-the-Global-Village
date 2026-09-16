@@ -80,11 +80,10 @@ const ROOM_SCOPED_COLLECTIONS = [
   "participants",
   "studentNotes",
   "studentAnnotations",
-  "studentBookmarks",
   "studentProgress",
 ];
 
-/** 방과 그 안의 모든 학습 기록(노트/필기/책갈피/진도)을 함께 삭제합니다. */
+/** 방과 그 안의 모든 학습 기록(노트/필기/진도)을 함께 삭제합니다. */
 export async function deleteRoomCascade(roomId: string) {
   for (const col of ROOM_SCOPED_COLLECTIONS) {
     const q = query(collection(db, col), where("roomId", "==", roomId));

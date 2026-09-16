@@ -9,7 +9,7 @@ export interface RoomDoc {
   id: string;
   grade: Grade;
   classNum: number;
-  password: string; // 선생님이 정한 4자리 비밀번호
+  password: string; // 선생님(관리)용 비밀번호. 학생 참여에는 쓰이지 않음
   teacherName: string;
   createdAt: number;
 }
@@ -38,13 +38,21 @@ export interface TextbookDoc {
   uploadedAt: number;
 }
 
-export type StrokeTool = "pen" | "highlighter";
+export type DrawTool = "pen" | "highlighter" | "eraser";
+export type AnnotationTool = DrawTool | "note" | "none";
 
 export interface Stroke {
-  tool: StrokeTool;
+  tool: "pen" | "highlighter";
   color: string;
   width: number;
   points: number[]; // flattened [x1,y1,x2,y2,...] in 0-1 normalized page coordinates
+}
+
+export interface PlacedNote {
+  id: string;
+  x: number; // 0-1 normalized page coordinates
+  y: number;
+  text: string;
 }
 
 // uid 필드는 Firebase Auth 계정이 아니라 `${roomId}_${studentNum}` 형태의
@@ -56,7 +64,7 @@ export interface StudentNoteDoc {
   roomId: string;
   textbookId: string;
   page: number;
-  text: string;
+  items: PlacedNote[];
   updatedAt: number;
 }
 
@@ -68,15 +76,6 @@ export interface StudentAnnotationDoc {
   page: number;
   strokes: Stroke[];
   updatedAt: number;
-}
-
-export interface StudentBookmarkDoc {
-  id: string;
-  uid: string;
-  roomId: string;
-  textbookId: string;
-  page: number;
-  createdAt: number;
 }
 
 export interface StudentProgressDoc {

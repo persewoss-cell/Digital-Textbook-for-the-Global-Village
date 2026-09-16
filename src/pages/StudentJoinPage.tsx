@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { getFirstTextbookForGrade } from "@/lib/firestore";
 import { getRoom, joinRoom } from "@/lib/rooms";
 import { saveParticipantSession } from "@/lib/session";
 import type { RoomDoc } from "@/types";
@@ -11,7 +12,6 @@ export default function StudentJoinPage() {
 
   const [studentNum, setStudentNum] = useState(1);
   const [name, setName] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -29,19 +29,21 @@ export default function StudentJoinPage() {
       setError("이름을 입력해 주세요.");
       return;
     }
-    if (password !== room.password) {
-      setError("방 비밀번호가 올바르지 않아요.");
-      return;
-    }
 
     setLoading(true);
     try {
       await joinRoom(roomId, studentNum, name);
       saveParticipantSession({ roomId, studentNum, name: name.trim() });
-      navigate(`/room/${roomId}/textbook`, { replace: true });
+
+      const textbook = await getFirstTextbookForGrade(room.grade);
+      if (!textbook) {
+        setError("아직 이 학년에 등록된 교과서가 없어요. 선생님/관리자에게 문의하세요.");
+        setLoading(false);
+        return;
+      }
+      navigate(`/room/${roomId}/textbook/${textbook.id}`, { replace: true });
     } catch {
       setError("입장 중 문제가 발생했어요. 잠시 후 다시 시도해 주세요.");
-    } finally {
       setLoading(false);
     }
   };
@@ -96,18 +98,7 @@ export default function StudentJoinPage() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="이름을 입력하세요"
                 required
-              />
-            </div>
-            <div>
-              <label className="label">방 비밀번호</label>
-              <input
-                className="input tracking-widest"
-                value={password}
-                onChange={(e) => setPassword(e.target.value.replace(/[^0-9]/g, "").slice(0, 4))}
-                placeholder="1234"
-                inputMode="numeric"
-                maxLength={4}
-                required
+                autoFocus
               />
             </div>
 

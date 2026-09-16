@@ -3,6 +3,8 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  limit,
   onSnapshot,
   query,
   setDoc,
@@ -14,8 +16,8 @@ import { db } from "@/firebase";
 import type {
   ChapterMeta,
   Grade,
+  PlacedNote,
   StudentAnnotationDoc,
-  StudentBookmarkDoc,
   StudentNoteDoc,
   StudentProgressDoc,
   Stroke,
@@ -42,6 +44,13 @@ export async function getTextbook(id: string): Promise<TextbookDoc | null> {
   return snap.exists() ? (snap.data() as TextbookDoc) : null;
 }
 
+/** 방에 처음 들어갈 때 해당 학년의 (첫 번째) 교재로 바로 이동하기 위한 1회성 조회 */
+export async function getFirstTextbookForGrade(grade: Grade): Promise<TextbookDoc | null> {
+  const q = query(collection(db, "textbooks"), where("grade", "==", grade), limit(1));
+  const snap = await getDocs(q);
+  return snap.empty ? null : (snap.docs[0].data() as TextbookDoc);
+}
+
 export async function createTextbookDoc(input: {
   id: string;
   grade: Grade;
@@ -66,11 +75,16 @@ export async function deleteTextbookDoc(id: string) {
   await deleteDoc(doc(db, "textbooks", id));
 }
 
-// ---------- 참가자(=uid: `${roomId}_${studentNum}`)별 노트/필기/책갈피/진도 ----------
+// ---------- 참가자(=uid: `${roomId}_${studentNum}`)별 노트/필기/진도 ----------
 const pageKey = (uid: string, textbookId: string, page: number) => `${uid}_${textbookId}_${page}`;
 const roomIdOf = (uid: string) => uid.split("_")[0];
 
-export async function saveNote(uid: string, textbookId: string, page: number, text: string) {
+export async function saveNoteItems(
+  uid: string,
+  textbookId: string,
+  page: number,
+  items: PlacedNote[],
+) {
   const id = pageKey(uid, textbookId, page);
   const data: StudentNoteDoc = {
     id,
@@ -78,7 +92,7 @@ export async function saveNote(uid: string, textbookId: string, page: number, te
     roomId: roomIdOf(uid),
     textbookId,
     page,
-    text,
+    items,
     updatedAt: Date.now(),
   };
   await setDoc(doc(db, "studentNotes", id), data);
@@ -124,43 +138,6 @@ export function watchAnnotation(
   const id = pageKey(uid, textbookId, page);
   return onSnapshot(doc(db, "studentAnnotations", id), (snap) =>
     cb(snap.exists() ? (snap.data() as StudentAnnotationDoc) : null),
-  );
-}
-
-export async function toggleBookmark(
-  uid: string,
-  textbookId: string,
-  page: number,
-  bookmarked: boolean,
-) {
-  const id = pageKey(uid, textbookId, page);
-  if (bookmarked) {
-    const data: StudentBookmarkDoc = {
-      id,
-      uid,
-      roomId: roomIdOf(uid),
-      textbookId,
-      page,
-      createdAt: Date.now(),
-    };
-    await setDoc(doc(db, "studentBookmarks", id), data);
-  } else {
-    await deleteDoc(doc(db, "studentBookmarks", id));
-  }
-}
-
-export function watchBookmarks(
-  uid: string,
-  textbookId: string,
-  cb: (bookmarks: StudentBookmarkDoc[]) => void,
-): Unsubscribe {
-  const q = query(
-    collection(db, "studentBookmarks"),
-    where("uid", "==", uid),
-    where("textbookId", "==", textbookId),
-  );
-  return onSnapshot(q, (snap) =>
-    cb(snap.docs.map((d) => d.data() as StudentBookmarkDoc).sort((a, b) => a.page - b.page)),
   );
 }
 

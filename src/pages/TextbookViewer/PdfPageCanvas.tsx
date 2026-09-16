@@ -1,18 +1,17 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
-export function PdfPageCanvas({
-  pdf,
-  pageNumber,
-  width,
-  onSize,
-}: {
-  pdf: PDFDocumentProxy;
-  pageNumber: number;
-  width: number;
-  onSize?: (w: number, h: number) => void;
-}) {
+export const PdfPageCanvas = forwardRef<
+  HTMLCanvasElement,
+  {
+    pdf: PDFDocumentProxy;
+    pageNumber: number;
+    width: number;
+    onSize?: (w: number, h: number) => void;
+  }
+>(function PdfPageCanvas({ pdf, pageNumber, width, onSize }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  useImperativeHandle(ref, () => canvasRef.current!, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,4 +41,4 @@ export function PdfPageCanvas({
   }, [pdf, pageNumber, width]);
 
   return <canvas ref={canvasRef} className="block select-none" />;
-}
+});

@@ -11,9 +11,12 @@ import { drawStroke, STROKE_WIDTH_REFERENCE } from "@/pages/TextbookViewer/Annot
 import { DEFAULT_NOTE_FONT_SIZE } from "@/pages/TextbookViewer/NotesOverlay";
 import type { ParticipantDoc, PlacedNote, RoomDoc, StudentProgressDoc, TextbookDoc } from "@/types";
 
-const THUMB_WIDTH = 160;
-// 실제 쪽에서 쓰는 필기 두께/글씨 크기를 이 작은 썸네일 크기에 맞게 비례해서 줄인다.
-const THUMB_SCALE = THUMB_WIDTH / STROKE_WIDTH_REFERENCE;
+// 화면 너비에 맞춰 한 줄에 들어갈 카드 수를 정하고, 그 안에서 최대한 크게 보이도록
+// 썸네일 너비를 계산한다 (좁은 화면에서는 칸 수를 줄여서라도 이 크기 밑으로는 안 내려가게 함).
+const THUMB_MIN_WIDTH = 200;
+const THUMB_MAX_WIDTH = 280;
+const GRID_GAP = 12;
+const MAX_COLUMNS = 4;
 
 function ThumbStrokes({
   roomId,
@@ -42,7 +45,8 @@ function ThumbStrokes({
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
         ctx.clearRect(0, 0, width, height);
-        (a?.strokes ?? []).forEach((s) => drawStroke(ctx, s, width, height, THUMB_SCALE));
+        const widthScale = width / STROKE_WIDTH_REFERENCE;
+        (a?.strokes ?? []).forEach((s) => drawStroke(ctx, s, width, height, widthScale));
       }),
     [roomId, studentNum, textbookId, page, width, height],
   );
@@ -56,11 +60,13 @@ function ThumbNotes({
   studentNum,
   textbookId,
   page,
+  width,
 }: {
   roomId: string;
   studentNum: number;
   textbookId: string;
   page: number;
+  width: number;
 }) {
   const [items, setItems] = useState<PlacedNote[]>([]);
 
@@ -72,6 +78,8 @@ function ThumbNotes({
     [roomId, studentNum, textbookId, page],
   );
 
+  const scale = width / STROKE_WIDTH_REFERENCE;
+
   return (
     <div className="absolute inset-0">
       {items
@@ -79,11 +87,12 @@ function ThumbNotes({
         .map((note) => (
         <div
           key={note.id}
-          className="absolute max-w-[60%] -translate-y-1/2 truncate rounded-sm bg-white/70 px-px font-normal leading-none text-slate-800"
+          // 본문에서와 마찬가지로 줄바꿈(Enter)은 그대로 살리고, 한 줄로 잘라 "..."으로 표시하지 않는다.
+          className="absolute max-w-[60%] -translate-y-1/2 whitespace-pre rounded-sm bg-white/70 px-px font-normal leading-tight text-slate-800"
           style={{
             left: `${note.x * 100}%`,
             top: `${note.y * 100}%`,
-            fontSize: Math.max(3, (note.fontSize ?? DEFAULT_NOTE_FONT_SIZE) * THUMB_SCALE),
+            fontSize: Math.max(4, (note.fontSize ?? DEFAULT_NOTE_FONT_SIZE) * scale),
           }}
         >
           {note.text}
@@ -99,6 +108,7 @@ function ParticipantThumbCard({
   textbookId,
   pdf,
   aspect,
+  thumbWidth,
   onOpen,
 }: {
   roomId: string;
@@ -106,6 +116,7 @@ function ParticipantThumbCard({
   textbookId: string;
   pdf: PDFDocumentProxy | null;
   aspect: number;
+  thumbWidth: number;
   onOpen: () => void;
 }) {
   const [progress, setProgress] = useState<StudentProgressDoc | null>(null);
@@ -117,20 +128,20 @@ function ParticipantThumbCard({
 
   const page = Math.min(progress?.lastPage ?? 1, pdf?.numPages ?? 1);
   // 실제 쪽 비율과 다르면 필기/노트 위치가 쪽 이미지와 어긋나 보이므로 실제 비율을 그대로 쓴다.
-  const thumbHeight = THUMB_WIDTH * aspect;
+  const thumbHeight = thumbWidth * aspect;
 
   return (
     <button onClick={onOpen} className="card overflow-hidden text-left transition hover:shadow-md">
       <div className="relative flex items-center justify-center bg-slate-100 py-2">
         {pdf ? (
           <div className="relative">
-            <PdfPageCanvas pdf={pdf} pageNumber={page} width={THUMB_WIDTH} />
+            <PdfPageCanvas pdf={pdf} pageNumber={page} width={thumbWidth} />
             <ThumbStrokes
               roomId={roomId}
               studentNum={participant.studentNum}
               textbookId={textbookId}
               page={page}
-              width={THUMB_WIDTH}
+              width={thumbWidth}
               height={thumbHeight}
             />
             <ThumbNotes
@@ -138,10 +149,11 @@ function ParticipantThumbCard({
               studentNum={participant.studentNum}
               textbookId={textbookId}
               page={page}
+              width={thumbWidth}
             />
           </div>
         ) : (
-          <div style={{ width: THUMB_WIDTH, height: thumbHeight }} />
+          <div style={{ width: thumbWidth, height: thumbHeight }} />
         )}
       </div>
       <div className="border-t border-slate-100 p-2 text-center text-xs font-semibold text-slate-600">
@@ -164,6 +176,24 @@ export default function RoomManagePage() {
   const [textbook, setTextbook] = useState<TextbookDoc | null>(null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [aspect, setAspect] = useState(1.41);
+
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [gridWidth, setGridWidth] = useState(900);
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => setGridWidth(entries[0].contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const columns = Math.max(
+    1,
+    Math.min(MAX_COLUMNS, Math.floor((gridWidth + GRID_GAP) / (THUMB_MIN_WIDTH + GRID_GAP))),
+  );
+  const thumbWidth = Math.min(
+    THUMB_MAX_WIDTH,
+    Math.floor((gridWidth - GRID_GAP * (columns - 1)) / columns),
+  );
 
   useEffect(() => {
     if (!roomId) return;
@@ -279,7 +309,7 @@ export default function RoomManagePage() {
         </button>
       }
     >
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">
@@ -298,7 +328,11 @@ export default function RoomManagePage() {
           학생들이 지금 보고 있는 쪽과 필기가 실시간으로 표시돼요. 카드를 누르면 전체 화면으로 볼 수 있어요.
         </p>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div
+          ref={gridRef}
+          className="grid gap-3"
+          style={{ gridTemplateColumns: `repeat(${columns}, 1fr)` }}
+        >
           {textbook &&
             participants.map((p) => (
               <ParticipantThumbCard
@@ -308,6 +342,7 @@ export default function RoomManagePage() {
                 textbookId={textbook.id}
                 pdf={pdf}
                 aspect={aspect}
+                thumbWidth={thumbWidth}
                 onOpen={() =>
                   navigate(`/room/${roomId}/textbook/${textbook.id}?asStudentNum=${p.studentNum}`, {
                     state: { studentName: p.name },

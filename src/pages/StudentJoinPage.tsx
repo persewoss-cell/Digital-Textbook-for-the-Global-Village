@@ -1,26 +1,65 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getFirstTextbookForGrade } from "@/lib/firestore";
 import { getRoom, joinRoom } from "@/lib/rooms";
-import { saveParticipantSession } from "@/lib/session";
+import {
+  clearRememberedParticipant,
+  loadRememberedParticipant,
+  saveParticipantSession,
+  saveRememberedParticipant,
+} from "@/lib/session";
 import type { RoomDoc } from "@/types";
+
+type Step = "number" | "name";
 
 export default function StudentJoinPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const [room, setRoom] = useState<RoomDoc | null | undefined>(undefined);
 
-  const [studentNum, setStudentNum] = useState(1);
+  const [step, setStep] = useState<Step>("number");
+  const [studentNum, setStudentNum] = useState("");
   const [name, setName] = useState("");
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const numberInputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!roomId) return;
     getRoom(roomId).then(setRoom);
   }, [roomId]);
 
-  const handleSubmit = async (e: FormEvent) => {
+  // 이전에 "번호랑 이름 기억하기"를 체크했다면 이 방에서는 자동으로 채워 넣는다.
+  useEffect(() => {
+    if (!roomId) return;
+    const remembered = loadRememberedParticipant(roomId);
+    if (remembered) {
+      setStudentNum(String(remembered.studentNum));
+      setName(remembered.name);
+      setRemember(true);
+    }
+  }, [roomId]);
+
+  useEffect(() => {
+    if (step === "number") numberInputRef.current?.focus();
+    else nameInputRef.current?.focus();
+  }, [step]);
+
+  const handleNumberSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const n = Number(studentNum);
+    if (!studentNum || !Number.isInteger(n) || n < 1) {
+      setError("번호를 입력해 주세요.");
+      return;
+    }
+    setStep("name");
+  };
+
+  const handleNameSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!roomId || !room) return;
@@ -30,10 +69,17 @@ export default function StudentJoinPage() {
       return;
     }
 
+    const n = Number(studentNum);
     setLoading(true);
     try {
-      await joinRoom(roomId, studentNum, name);
-      saveParticipantSession({ roomId, studentNum, name: name.trim() });
+      await joinRoom(roomId, n, name);
+      saveParticipantSession({ roomId, studentNum: n, name: name.trim() });
+
+      if (remember) {
+        saveRememberedParticipant(roomId, { studentNum: n, name: name.trim() });
+      } else {
+        clearRememberedParticipant(roomId);
+      }
 
       const textbook = await getFirstTextbookForGrade(room.grade);
       if (!textbook) {
@@ -77,39 +123,70 @@ export default function StudentJoinPage() {
         </div>
 
         <div className="card p-6">
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div>
-              <label className="label">번호</label>
-              <input
-                type="number"
-                min={1}
-                max={50}
-                className="input"
-                value={studentNum}
-                onChange={(e) => setStudentNum(Number(e.target.value))}
-                required
-              />
-            </div>
-            <div>
-              <label className="label">이름</label>
-              <input
-                className="input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="이름을 입력하세요"
-                required
-                autoFocus
-              />
-            </div>
+          {step === "number" ? (
+            <form className="space-y-4" onSubmit={handleNumberSubmit}>
+              <div>
+                <label className="label">번호</label>
+                <input
+                  ref={numberInputRef}
+                  type="text"
+                  inputMode="numeric"
+                  className="input text-center text-lg tracking-widest"
+                  value={studentNum}
+                  onChange={(e) => setStudentNum(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))}
+                  placeholder="번호를 입력하세요"
+                  required
+                />
+              </div>
 
-            {error && (
-              <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
-            )}
+              {error && (
+                <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+              )}
 
-            <button type="submit" className="btn-primary w-full" disabled={loading}>
-              {loading ? "입장 중..." : "입장하기"}
-            </button>
-          </form>
+              <button type="submit" className="btn-primary w-full">
+                다음
+              </button>
+            </form>
+          ) : (
+            <form className="space-y-4" onSubmit={handleNameSubmit}>
+              <div>
+                <label className="label">이름</label>
+                <input
+                  ref={nameInputRef}
+                  className="input"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="이름을 입력하세요"
+                  required
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                />
+                번호랑 이름 기억하기
+              </label>
+
+              {error && (
+                <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>
+              )}
+
+              <button type="submit" className="btn-primary w-full" disabled={loading}>
+                {loading ? "입장 중..." : "다음"}
+              </button>
+              <button
+                type="button"
+                className="w-full text-center text-sm text-slate-500 hover:underline"
+                onClick={() => setStep("number")}
+              >
+                ← 번호 다시 입력
+              </button>
+            </form>
+          )}
 
           <div className="mt-4 text-center">
             <Link to="/" className="text-sm text-slate-500 hover:underline">

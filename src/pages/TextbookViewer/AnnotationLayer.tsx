@@ -29,6 +29,7 @@ function buildShapePoints(kind: ShapeTool, start: [number, number], end: [number
 export interface AnnotationLayerHandle {
   undo: () => void;
   redo: () => void;
+  clear: () => void;
   getCanvas: () => HTMLCanvasElement | null;
 }
 
@@ -184,8 +185,13 @@ export const AnnotationLayer = forwardRef<
         setStrokes(next);
         if (persist) void saveAnnotation(uid, textbookId, page, next);
       },
+      clear: () => {
+        if (readOnly || strokesRef.current.length === 0) return;
+        commit([]);
+      },
       getCanvas: () => canvasRef.current,
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [uid, textbookId, page, readOnly, persist],
   );
 

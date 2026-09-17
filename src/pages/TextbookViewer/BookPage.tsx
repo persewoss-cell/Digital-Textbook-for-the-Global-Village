@@ -1,8 +1,10 @@
-import { forwardRef, useImperativeHandle, useRef } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { PdfPageCanvas } from "./PdfPageCanvas";
 import { AnnotationLayer, type AnnotationLayerHandle } from "./AnnotationLayer";
 import { NotesOverlay } from "./NotesOverlay";
+import { PageLinkOverlay } from "./PageLinkOverlay";
+import { detectPageLinks, type PageLink } from "./pageLinks";
 import type { AnnotationTool, PlacedNote, Stroke } from "@/types";
 
 export interface BookPageHandle {
@@ -62,6 +64,8 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
 ) {
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const annotationRef = useRef<AnnotationLayerHandle>(null);
+  const [links, setLinks] = useState<PageLink[]>([]);
+  const linkDetectSeq = useRef(0);
 
   useImperativeHandle(
     ref,
@@ -92,7 +96,18 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
       className="relative overflow-hidden bg-white shadow-inner"
       style={{ width: boxWidth, height: boxHeight }}
     >
-      <PdfPageCanvas ref={pdfCanvasRef} pdf={pdf} pageNumber={pageNumber} width={boxWidth} />
+      <PdfPageCanvas
+        ref={pdfCanvasRef}
+        pdf={pdf}
+        pageNumber={pageNumber}
+        width={boxWidth}
+        onSize={() => {
+          const seq = ++linkDetectSeq.current;
+          detectPageLinks(pdf, pageNumber, pdfCanvasRef.current).then((found) => {
+            if (linkDetectSeq.current === seq) setLinks(found);
+          });
+        }}
+      />
       <AnnotationLayer
         ref={annotationRef}
         uid={uid}
@@ -120,6 +135,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
           onMove={onMoveNote}
         />
       )}
+      <PageLinkOverlay links={links} interactive={tool === "none"} />
       <div className="pointer-events-none absolute bottom-1 right-2 text-[10px] text-slate-400">
         {pageNumber}
       </div>

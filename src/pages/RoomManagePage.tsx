@@ -170,6 +170,7 @@ export default function RoomManagePage() {
   const [room, setRoom] = useState<RoomDoc | null | undefined>(undefined);
   const [unlocked, setUnlocked] = useState(() => (roomId ? isRoomUnlocked(roomId) : false));
   const [password, setPassword] = useState("");
+  const [rememberPassword, setRememberPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [participants, setParticipants] = useState<ParticipantDoc[]>([]);
@@ -236,7 +237,7 @@ export default function RoomManagePage() {
       setError("비밀번호가 올바르지 않아요.");
       return;
     }
-    markRoomUnlocked(roomId);
+    markRoomUnlocked(roomId, rememberPassword);
     setUnlocked(true);
   };
 
@@ -285,6 +286,15 @@ export default function RoomManagePage() {
               maxLength={4}
               autoFocus
             />
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-slate-300"
+                checked={rememberPassword}
+                onChange={(e) => setRememberPassword(e.target.checked)}
+              />
+              이 기기에서 비밀번호 기억하기
+            </label>
             {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
             <button type="submit" className="btn-primary w-full">
               확인

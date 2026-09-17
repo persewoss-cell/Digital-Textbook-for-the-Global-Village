@@ -7,6 +7,25 @@ const SHAPE_TOOLS: { tool: ShapeTool; icon: string; title: string }[] = [
   { tool: "circle", icon: "◯", title: "원" },
 ];
 
+/** 이모지 🧽(스펀지)가 지우개처럼 안 보인다는 피드백에 따라, 실제 지우개 느낌의 아이콘을 직접 그린다. */
+function EraserIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M18.5 12.5 10 21H5.5L3 18.5a2 2 0 0 1 0-2.8L13.2 5.5a2.5 2.5 0 0 1 3.5 0l2.3 2.3a2.5 2.5 0 0 1 0 3.5Z" />
+      <path d="M12.5 7.5 17 12" />
+      <path d="M3.5 21h7" />
+    </svg>
+  );
+}
+
 export interface SearchResult {
   page: number;
   snippet: string;
@@ -39,6 +58,9 @@ export function Toolbar({
   magnifierMode,
   onToggleMagnifier,
   onZoomReset,
+  whiteboardMode,
+  onToggleWhiteboard,
+  onClearWhiteboard,
   readOnly,
 }: {
   viewMode: "single" | "spread";
@@ -60,6 +82,9 @@ export function Toolbar({
   magnifierMode: boolean;
   onToggleMagnifier: () => void;
   onZoomReset: () => void;
+  whiteboardMode: boolean;
+  onToggleWhiteboard: () => void;
+  onClearWhiteboard: () => void;
   readOnly: boolean;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -153,7 +178,7 @@ export function Toolbar({
               title="지우개"
               onClick={() => onToolChange(tool === "eraser" ? "none" : "eraser")}
             >
-              🧽
+              <EraserIcon className="h-4 w-4" />
             </button>
             {tool === "eraser" &&
               ERASER_SIZES.map((s) => (
@@ -182,6 +207,23 @@ export function Toolbar({
             >
               📝 노트
             </button>
+          </div>
+          <div className="mx-1 h-5 w-px bg-slate-200" />
+
+          {/* 화이트보드 */}
+          <div className="flex items-center gap-1">
+            <button
+              className={`btn-ghost px-2 text-xs ${whiteboardMode ? "bg-brand-100 text-brand-700" : ""}`}
+              title="화이트보드"
+              onClick={onToggleWhiteboard}
+            >
+              🖍️ 화이트보드
+            </button>
+            {whiteboardMode && (
+              <button className="btn-ghost px-2 text-xs" title="화이트보드 모두 지우기" onClick={onClearWhiteboard}>
+                🗑️ 모두 지우기
+              </button>
+            )}
           </div>
           <div className="mx-1 h-5 w-px bg-slate-200" />
         </>

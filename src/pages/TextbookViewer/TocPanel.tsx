@@ -28,12 +28,13 @@ export function TocPanel({
               <li key={c.startPage}>
                 <button
                   onClick={() => onJump(c.startPage)}
-                  className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
+                  title={c.title}
+                  className={`flex w-full items-center gap-1 rounded-lg px-3 py-1.5 text-left text-xs transition ${
                     active ? "bg-brand-50 font-semibold text-brand-700" : "text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  {c.title}
-                  <span className="ml-1 text-xs text-slate-400">· {c.startPage}쪽</span>
+                  <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                  <span className="shrink-0 text-[10px] text-slate-400">{c.startPage}쪽</span>
                 </button>
               </li>
             );

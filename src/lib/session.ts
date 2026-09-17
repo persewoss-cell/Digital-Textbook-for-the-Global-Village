@@ -24,14 +24,22 @@ export function useAnonSession(): boolean {
 }
 
 const ROOM_UNLOCK_PREFIX = "gvtb:unlockedRoom:";
+const ROOM_UNLOCK_REMEMBER_PREFIX = "gvtb:rememberedUnlockedRoom:";
 const PARTICIPANT_KEY = "gvtb:participant:";
+const REMEMBERED_PARTICIPANT_PREFIX = "gvtb:rememberedParticipant:";
 const ADMIN_UNLOCK_KEY = "gvtb:adminUnlocked";
 
-export function markRoomUnlocked(roomId: string) {
+/** remember=true면 이 기기에서는 브라우저를 껐다 켜도(로컬스토리지) 계속 잠금 해제 상태로 남는다. */
+export function markRoomUnlocked(roomId: string, remember = false) {
   sessionStorage.setItem(`${ROOM_UNLOCK_PREFIX}${roomId}`, "1");
+  if (remember) localStorage.setItem(`${ROOM_UNLOCK_REMEMBER_PREFIX}${roomId}`, "1");
 }
 export function isRoomUnlocked(roomId: string): boolean {
-  return sessionStorage.getItem(`${ROOM_UNLOCK_PREFIX}${roomId}`) === "1" || isAdminUnlocked();
+  return (
+    sessionStorage.getItem(`${ROOM_UNLOCK_PREFIX}${roomId}`) === "1" ||
+    localStorage.getItem(`${ROOM_UNLOCK_REMEMBER_PREFIX}${roomId}`) === "1" ||
+    isAdminUnlocked()
+  );
 }
 
 export interface ParticipantSession {
@@ -50,6 +58,27 @@ export function loadParticipantSession(roomId: string): ParticipantSession | nul
   } catch {
     return null;
   }
+}
+
+export interface RememberedParticipant {
+  studentNum: number;
+  name: string;
+}
+/** "번호랑 이름 기억하기"를 체크했을 때, 이 방에 한해 다음 방문에도 자동으로 채워 넣는다. */
+export function saveRememberedParticipant(roomId: string, participant: RememberedParticipant) {
+  localStorage.setItem(`${REMEMBERED_PARTICIPANT_PREFIX}${roomId}`, JSON.stringify(participant));
+}
+export function loadRememberedParticipant(roomId: string): RememberedParticipant | null {
+  const raw = localStorage.getItem(`${REMEMBERED_PARTICIPANT_PREFIX}${roomId}`);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as RememberedParticipant;
+  } catch {
+    return null;
+  }
+}
+export function clearRememberedParticipant(roomId: string) {
+  localStorage.removeItem(`${REMEMBERED_PARTICIPANT_PREFIX}${roomId}`);
 }
 
 export function markAdminUnlocked() {

@@ -16,6 +16,7 @@ import { getRoom, participantKey } from "@/lib/rooms";
 import { isRoomUnlocked, loadParticipantSession, type ParticipantSession } from "@/lib/session";
 import type { AnnotationTool, PlacedNote, RoomDoc, Stroke, TextbookDoc } from "@/types";
 import { BookPage, type BookPageHandle } from "./BookPage";
+import { AnnotationLayer, type AnnotationLayerHandle } from "./AnnotationLayer";
 import { Toolbar, type SearchResult } from "./Toolbar";
 import { TocPanel } from "./TocPanel";
 import { NotesPanel } from "./NotesPanel";
@@ -89,6 +90,12 @@ export default function TextbookViewerPage() {
 
   const [magnifierMode, setMagnifierMode] = useState(false);
   const [magnifierRect, setMagnifierRect] = useState<MagnifierRect>({ fx: 0.3, fy: 0.3, fw: 0.4, fh: 0.4 });
+
+  // 화이트보드는 특정 쪽과 무관한 빈 캔버스라서(저장 안 함) 별도의 실행취소 기록/ref를 쓴다.
+  const [whiteboardMode, setWhiteboardMode] = useState(false);
+  const whiteboardRef = useRef<AnnotationLayerHandle>(null);
+  const whiteboardHistoryMap = useRef<Map<number, Stroke[][]>>(new Map());
+  const whiteboardFutureMap = useRef<Map<number, Stroke[][]>>(new Map());
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ w: 900, h: 600 });
@@ -362,6 +369,10 @@ export default function TextbookViewerPage() {
 
   // 필기(연필/색펜/도형/지우개)와 노트, 둘 중 더 최근에 한 일을 실행취소한다.
   const handleUndo = () => {
+    if (whiteboardMode) {
+      whiteboardRef.current?.undo();
+      return;
+    }
     commitNoteEditSession();
     const noteAction = lastNoteAction.current;
     const drawAction = lastDrawAction.current;
@@ -392,6 +403,10 @@ export default function TextbookViewerPage() {
   };
 
   const handleRedo = () => {
+    if (whiteboardMode) {
+      whiteboardRef.current?.redo();
+      return;
+    }
     if (lastUndoneType.current === "note" && lastUndonePage.current !== null) {
       const page = lastUndonePage.current;
       const futureStack = notesFutureMapRef.current.get(page);
@@ -584,99 +599,136 @@ export default function TextbookViewerPage() {
             setTool("none");
           }}
           onZoomReset={() => setZoom(1)}
+          whiteboardMode={whiteboardMode}
+          onToggleWhiteboard={() => setWhiteboardMode((v) => !v)}
+          onClearWhiteboard={() => whiteboardRef.current?.clear()}
           readOnly={readOnly}
         />
 
         <div className="flex flex-1 overflow-hidden">
-          <TocPanel title={textbook.title} chapters={textbook.chapters} currentPage={currentPage} onJump={jumpTo} />
+          {!whiteboardMode && (
+            <TocPanel title={textbook.title} chapters={textbook.chapters} currentPage={currentPage} onJump={jumpTo} />
+          )}
 
           <div ref={containerRef} className="relative flex-1 overflow-hidden bg-slate-200">
-            <div className="absolute inset-0 overflow-auto">
-              {/* items-center/justify-center로 가운데 정렬하면, 확대해서 내용이 컨테이너보다
-                  커졌을 때 브라우저가 넘치는 부분을 좌우/상하로 "똑같이" 넘치게 만드는데,
-                  그중 시작(왼쪽/위) 쪽으로 넘친 부분은 스크롤해도 닿지 않는 버그가 있다.
-                  (짝수쪽처럼 스프레드의 왼쪽에 있는 페이지를 돋보기로 확대하면 그 쪽으로
-                  스크롤이 안 되고 가운데만 보이던 원인이 바로 이것.) 대신 바깥은 정렬 없이
-                  두고 안쪽 내용에 margin:auto로 가운데를 맞추면, 내용이 작을 때는 그대로
-                  가운데 정렬되면서 커졌을 때는 처음(왼쪽/위)부터 자연스럽게 넘쳐서 전체를
-                  스크롤로 온전히 볼 수 있다. */}
-              <div className="flex min-h-full p-4">
+            {whiteboardMode ? (
+              <div className="absolute inset-0 flex items-center justify-center p-4">
                 <div
-                  className="relative m-auto flex shadow-2xl"
-                  style={{ gap: PAGE_GAP, opacity: pageOpacity, transition: "opacity 120ms" }}
+                  className="relative overflow-hidden rounded-xl bg-white shadow-2xl"
+                  style={{
+                    width: Math.max(300, containerSize.w - CONTAINER_PADDING * 2),
+                    height: Math.max(300, containerSize.h - CONTAINER_PADDING * 2),
+                  }}
                 >
-                  {viewMode === "spread" && pagesToShow.length === 1 && pagesToShow[0] === 1 && (
-                    <div style={{ width: boxWidth, height: boxHeight }} />
-                  )}
-                  {pagesToShow.map((n) => (
-                    <div key={n} className="relative" style={{ width: boxWidth, height: boxHeight }}>
-                      <BookPage
-                        ref={(el) => {
-                          if (el) pageRefs.current.set(n, el);
-                          else pageRefs.current.delete(n);
-                        }}
-                        pdf={pdf}
-                        pageNumber={n}
-                        boxWidth={boxWidth}
-                        boxHeight={boxHeight}
-                        uid={effectiveUid}
-                        textbookId={textbookId!}
-                        tool={tool}
-                        color={color}
-                        eraserSize={eraserSize}
-                        readOnly={readOnly}
-                        onDraw={() => {
-                          lastDrawAction.current = { seq: nextActionSeq(), page: n };
-                        }}
-                        historyMap={historyMapRef.current}
-                        futureMap={futureMapRef.current}
-                        showNotes
-                        noteItems={notesByPage.get(n) ?? []}
-                        activeNoteId={n === activeNotePage ? activeNoteId : null}
-                        onCreateNote={(x, y) => handleCreateNote(n, x, y)}
-                        onSelectNote={(id) => handleSelectNote(n, id)}
-                        onMoveNote={(id, x, y) => handleMoveNote(n, id, x, y)}
-                      />
-                    </div>
-                  ))}
-
-                  {magnifierMode && (
-                    <MagnifierOverlay
-                      rect={magnifierRect}
-                      boxWidth={spreadWidth}
-                      boxHeight={boxHeight}
-                      onChange={setMagnifierRect}
-                      onConfirm={handleMagnifierConfirm}
-                    />
-                  )}
+                  <AnnotationLayer
+                    ref={whiteboardRef}
+                    uid={effectiveUid}
+                    textbookId={textbookId!}
+                    page={0}
+                    width={Math.max(300, containerSize.w - CONTAINER_PADDING * 2)}
+                    height={Math.max(300, containerSize.h - CONTAINER_PADDING * 2)}
+                    tool={tool === "note" ? "none" : tool}
+                    color={color}
+                    eraserSize={eraserSize}
+                    readOnly={readOnly}
+                    historyMap={whiteboardHistoryMap.current}
+                    futureMap={whiteboardFutureMap.current}
+                    persist={false}
+                  />
                 </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="absolute inset-0 overflow-auto">
+                  {/* items-center/justify-center로 가운데 정렬하면, 확대해서 내용이 컨테이너보다
+                      커졌을 때 브라우저가 넘치는 부분을 좌우/상하로 "똑같이" 넘치게 만드는데,
+                      그중 시작(왼쪽/위) 쪽으로 넘친 부분은 스크롤해도 닿지 않는 버그가 있다.
+                      (짝수쪽처럼 스프레드의 왼쪽에 있는 페이지를 돋보기로 확대하면 그 쪽으로
+                      스크롤이 안 되고 가운데만 보이던 원인이 바로 이것.) 대신 바깥은 정렬 없이
+                      두고 안쪽 내용에 margin:auto로 가운데를 맞추면, 내용이 작을 때는 그대로
+                      가운데 정렬되면서 커졌을 때는 처음(왼쪽/위)부터 자연스럽게 넘쳐서 전체를
+                      스크롤로 온전히 볼 수 있다. */}
+                  <div className="flex min-h-full p-4">
+                    <div
+                      className="relative m-auto flex shadow-2xl"
+                      style={{ gap: PAGE_GAP, opacity: pageOpacity, transition: "opacity 120ms" }}
+                    >
+                      {viewMode === "spread" && pagesToShow.length === 1 && pagesToShow[0] === 1 && (
+                        <div style={{ width: boxWidth, height: boxHeight }} />
+                      )}
+                      {pagesToShow.map((n) => (
+                        <div key={n} className="relative" style={{ width: boxWidth, height: boxHeight }}>
+                          <BookPage
+                            ref={(el) => {
+                              if (el) pageRefs.current.set(n, el);
+                              else pageRefs.current.delete(n);
+                            }}
+                            pdf={pdf}
+                            pageNumber={n}
+                            boxWidth={boxWidth}
+                            boxHeight={boxHeight}
+                            uid={effectiveUid}
+                            textbookId={textbookId!}
+                            tool={tool}
+                            color={color}
+                            eraserSize={eraserSize}
+                            readOnly={readOnly}
+                            onDraw={() => {
+                              lastDrawAction.current = { seq: nextActionSeq(), page: n };
+                            }}
+                            historyMap={historyMapRef.current}
+                            futureMap={futureMapRef.current}
+                            showNotes
+                            noteItems={notesByPage.get(n) ?? []}
+                            activeNoteId={n === activeNotePage ? activeNoteId : null}
+                            onCreateNote={(x, y) => handleCreateNote(n, x, y)}
+                            onSelectNote={(id) => handleSelectNote(n, id)}
+                            onMoveNote={(id, x, y) => handleMoveNote(n, id, x, y)}
+                          />
+                        </div>
+                      ))}
 
-            <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
-              <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-white/95 px-4 py-2 shadow-lg">
-                <button className="btn-ghost px-2" title="이전 쪽" onClick={goPrev}>
-                  ◀
-                </button>
-                <PageJumpInput currentPage={currentPage} numPages={numPages} onJump={jumpTo} />
-                <button className="btn-ghost px-2" title="다음 쪽" onClick={goNext}>
-                  ▶
-                </button>
-              </div>
-            </div>
+                      {magnifierMode && (
+                        <MagnifierOverlay
+                          rect={magnifierRect}
+                          boxWidth={spreadWidth}
+                          boxHeight={boxHeight}
+                          onChange={setMagnifierRect}
+                          onConfirm={handleMagnifierConfirm}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+                  <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-white/95 px-4 py-2 shadow-lg">
+                    <button className="btn-ghost px-2" title="이전 쪽" onClick={goPrev}>
+                      ◀
+                    </button>
+                    <PageJumpInput currentPage={currentPage} numPages={numPages} onJump={jumpTo} />
+                    <button className="btn-ghost px-2" title="다음 쪽" onClick={goNext}>
+                      ▶
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
-          <NotesPanel
-            items={notesByPage.get(activeNotePage) ?? []}
-            activeId={activeNoteId}
-            readOnly={readOnly}
-            noteToolActive={tool === "note"}
-            studentLabel={readOnly ? location.state?.studentName : undefined}
-            onSelect={(id) => setActiveNoteId(id)}
-            onChangeText={handleUpdateNoteText}
-            onChangeFontSize={handleChangeNoteFontSize}
-            onDelete={handleDeleteNote}
-          />
+          {!whiteboardMode && (
+            <NotesPanel
+              items={notesByPage.get(activeNotePage) ?? []}
+              activeId={activeNoteId}
+              readOnly={readOnly}
+              noteToolActive={tool === "note"}
+              studentLabel={readOnly ? location.state?.studentName : undefined}
+              onSelect={(id) => setActiveNoteId(id)}
+              onChangeText={handleUpdateNoteText}
+              onChangeFontSize={handleChangeNoteFontSize}
+              onDelete={handleDeleteNote}
+            />
+          )}
         </div>
       </div>
     </AppShell>

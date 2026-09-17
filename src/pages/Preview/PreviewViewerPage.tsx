@@ -6,6 +6,7 @@ import { getTextbook, updateTextbookChapters } from "@/lib/firestore";
 import { extractPageText, extractRealChapters, loadPdf } from "@/lib/pdf";
 import type { AnnotationTool, PlacedNote, Stroke, TextbookDoc } from "@/types";
 import { BookPage, type BookPageHandle } from "@/pages/TextbookViewer/BookPage";
+import { AnnotationLayer, type AnnotationLayerHandle } from "@/pages/TextbookViewer/AnnotationLayer";
 import { Toolbar, type SearchResult } from "@/pages/TextbookViewer/Toolbar";
 import { TocPanel } from "@/pages/TextbookViewer/TocPanel";
 import { NotesPanel } from "@/pages/TextbookViewer/NotesPanel";
@@ -53,6 +54,11 @@ export default function PreviewViewerPage() {
 
   const [magnifierMode, setMagnifierMode] = useState(false);
   const [magnifierRect, setMagnifierRect] = useState<MagnifierRect>({ fx: 0.3, fy: 0.3, fw: 0.4, fh: 0.4 });
+
+  const [whiteboardMode, setWhiteboardMode] = useState(false);
+  const whiteboardRef = useRef<AnnotationLayerHandle>(null);
+  const whiteboardHistoryMap = useRef<Map<number, Stroke[][]>>(new Map());
+  const whiteboardFutureMap = useRef<Map<number, Stroke[][]>>(new Map());
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ w: 900, h: 600 });
@@ -261,6 +267,10 @@ export default function PreviewViewerPage() {
   };
 
   const handleUndo = () => {
+    if (whiteboardMode) {
+      whiteboardRef.current?.undo();
+      return;
+    }
     commitNoteEditSession();
     const noteAction = lastNoteAction.current;
     const drawAction = lastDrawAction.current;
@@ -290,6 +300,10 @@ export default function PreviewViewerPage() {
   };
 
   const handleRedo = () => {
+    if (whiteboardMode) {
+      whiteboardRef.current?.redo();
+      return;
+    }
     if (lastUndoneType.current === "note" && lastUndonePage.current !== null) {
       const page = lastUndonePage.current;
       const futureStack = notesFutureMapRef.current.get(page);
@@ -467,91 +481,128 @@ export default function PreviewViewerPage() {
             setTool("none");
           }}
           onZoomReset={() => setZoom(1)}
+          whiteboardMode={whiteboardMode}
+          onToggleWhiteboard={() => setWhiteboardMode((v) => !v)}
+          onClearWhiteboard={() => whiteboardRef.current?.clear()}
           readOnly={false}
         />
 
         <div className="flex flex-1 overflow-hidden">
-          <TocPanel title={textbook.title} chapters={textbook.chapters} currentPage={currentPage} onJump={jumpTo} />
+          {!whiteboardMode && (
+            <TocPanel title={textbook.title} chapters={textbook.chapters} currentPage={currentPage} onJump={jumpTo} />
+          )}
 
           <div ref={containerRef} className="relative flex-1 overflow-hidden bg-slate-200">
-            <div className="absolute inset-0 overflow-auto">
-              <div className="flex min-h-full p-4">
+            {whiteboardMode ? (
+              <div className="absolute inset-0 flex items-center justify-center p-4">
                 <div
-                  className="relative m-auto flex shadow-2xl"
-                  style={{ gap: PAGE_GAP, opacity: pageOpacity, transition: "opacity 120ms" }}
+                  className="relative overflow-hidden rounded-xl bg-white shadow-2xl"
+                  style={{
+                    width: Math.max(300, containerSize.w - CONTAINER_PADDING * 2),
+                    height: Math.max(300, containerSize.h - CONTAINER_PADDING * 2),
+                  }}
                 >
-                  {viewMode === "spread" && pagesToShow.length === 1 && pagesToShow[0] === 1 && (
-                    <div style={{ width: boxWidth, height: boxHeight }} />
-                  )}
-                  {pagesToShow.map((n) => (
-                    <div key={n} className="relative" style={{ width: boxWidth, height: boxHeight }}>
-                      <BookPage
-                        ref={(el) => {
-                          if (el) pageRefs.current.set(n, el);
-                          else pageRefs.current.delete(n);
-                        }}
-                        pdf={pdf}
-                        pageNumber={n}
-                        boxWidth={boxWidth}
-                        boxHeight={boxHeight}
-                        uid={PREVIEW_UID}
-                        textbookId={textbookId!}
-                        tool={tool}
-                        color={color}
-                        eraserSize={eraserSize}
-                        readOnly={false}
-                        onDraw={() => {
-                          lastDrawAction.current = { seq: nextActionSeq(), page: n };
-                        }}
-                        historyMap={historyMapRef.current}
-                        futureMap={futureMapRef.current}
-                        persist={false}
-                        showNotes
-                        noteItems={notesByPage.get(n) ?? []}
-                        activeNoteId={n === activeNotePage ? activeNoteId : null}
-                        onCreateNote={(x, y) => handleCreateNote(n, x, y)}
-                        onSelectNote={(id) => handleSelectNote(n, id)}
-                        onMoveNote={(id, x, y) => handleMoveNote(n, id, x, y)}
-                      />
-                    </div>
-                  ))}
-
-                  {magnifierMode && (
-                    <MagnifierOverlay
-                      rect={magnifierRect}
-                      boxWidth={spreadWidth}
-                      boxHeight={boxHeight}
-                      onChange={setMagnifierRect}
-                      onConfirm={handleMagnifierConfirm}
-                    />
-                  )}
+                  <AnnotationLayer
+                    ref={whiteboardRef}
+                    uid={PREVIEW_UID}
+                    textbookId={textbookId!}
+                    page={0}
+                    width={Math.max(300, containerSize.w - CONTAINER_PADDING * 2)}
+                    height={Math.max(300, containerSize.h - CONTAINER_PADDING * 2)}
+                    tool={tool === "note" ? "none" : tool}
+                    color={color}
+                    eraserSize={eraserSize}
+                    readOnly={false}
+                    historyMap={whiteboardHistoryMap.current}
+                    futureMap={whiteboardFutureMap.current}
+                    persist={false}
+                  />
                 </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="absolute inset-0 overflow-auto">
+                  <div className="flex min-h-full p-4">
+                    <div
+                      className="relative m-auto flex shadow-2xl"
+                      style={{ gap: PAGE_GAP, opacity: pageOpacity, transition: "opacity 120ms" }}
+                    >
+                      {viewMode === "spread" && pagesToShow.length === 1 && pagesToShow[0] === 1 && (
+                        <div style={{ width: boxWidth, height: boxHeight }} />
+                      )}
+                      {pagesToShow.map((n) => (
+                        <div key={n} className="relative" style={{ width: boxWidth, height: boxHeight }}>
+                          <BookPage
+                            ref={(el) => {
+                              if (el) pageRefs.current.set(n, el);
+                              else pageRefs.current.delete(n);
+                            }}
+                            pdf={pdf}
+                            pageNumber={n}
+                            boxWidth={boxWidth}
+                            boxHeight={boxHeight}
+                            uid={PREVIEW_UID}
+                            textbookId={textbookId!}
+                            tool={tool}
+                            color={color}
+                            eraserSize={eraserSize}
+                            readOnly={false}
+                            onDraw={() => {
+                              lastDrawAction.current = { seq: nextActionSeq(), page: n };
+                            }}
+                            historyMap={historyMapRef.current}
+                            futureMap={futureMapRef.current}
+                            persist={false}
+                            showNotes
+                            noteItems={notesByPage.get(n) ?? []}
+                            activeNoteId={n === activeNotePage ? activeNoteId : null}
+                            onCreateNote={(x, y) => handleCreateNote(n, x, y)}
+                            onSelectNote={(id) => handleSelectNote(n, id)}
+                            onMoveNote={(id, x, y) => handleMoveNote(n, id, x, y)}
+                          />
+                        </div>
+                      ))}
 
-            <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
-              <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-white/95 px-4 py-2 shadow-lg">
-                <button className="btn-ghost px-2" title="이전 쪽" onClick={goPrev}>
-                  ◀
-                </button>
-                <PageJumpInput currentPage={currentPage} numPages={numPages} onJump={jumpTo} />
-                <button className="btn-ghost px-2" title="다음 쪽" onClick={goNext}>
-                  ▶
-                </button>
-              </div>
-            </div>
+                      {magnifierMode && (
+                        <MagnifierOverlay
+                          rect={magnifierRect}
+                          boxWidth={spreadWidth}
+                          boxHeight={boxHeight}
+                          onChange={setMagnifierRect}
+                          onConfirm={handleMagnifierConfirm}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+                  <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-white/95 px-4 py-2 shadow-lg">
+                    <button className="btn-ghost px-2" title="이전 쪽" onClick={goPrev}>
+                      ◀
+                    </button>
+                    <PageJumpInput currentPage={currentPage} numPages={numPages} onJump={jumpTo} />
+                    <button className="btn-ghost px-2" title="다음 쪽" onClick={goNext}>
+                      ▶
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
-          <NotesPanel
-            items={notesByPage.get(activeNotePage) ?? []}
-            activeId={activeNoteId}
-            readOnly={false}
-            noteToolActive={tool === "note"}
-            onSelect={(id) => setActiveNoteId(id)}
-            onChangeText={handleUpdateNoteText}
-            onChangeFontSize={handleChangeNoteFontSize}
-            onDelete={handleDeleteNote}
-          />
+          {!whiteboardMode && (
+            <NotesPanel
+              items={notesByPage.get(activeNotePage) ?? []}
+              activeId={activeNoteId}
+              readOnly={false}
+              noteToolActive={tool === "note"}
+              onSelect={(id) => setActiveNoteId(id)}
+              onChangeText={handleUpdateNoteText}
+              onChangeFontSize={handleChangeNoteFontSize}
+              onDelete={handleDeleteNote}
+            />
+          )}
         </div>
       </div>
     </AppShell>

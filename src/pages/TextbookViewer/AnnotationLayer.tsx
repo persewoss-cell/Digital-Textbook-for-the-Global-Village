@@ -34,11 +34,22 @@ export interface AnnotationLayerHandle {
 
 const PENCIL_COLOR = "#52525b"; // 연필은 항상 회색 연필 느낌으로 고정
 
-export function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, w: number, h: number) {
+/** 필기 두께(stroke.width)는 대략 이 정도 쪽 너비를 기준으로 고른 값이다.
+ * 훨씬 작은 캔버스(예: 선생님 화면의 미리보기 썸네일)에 그대로 그리면 상대적으로
+ * 훨씬 두꺼워 보이므로, 그런 곳에서는 widthScale로 비례해서 줄여줘야 한다. */
+export const STROKE_WIDTH_REFERENCE = 600;
+
+export function drawStroke(
+  ctx: CanvasRenderingContext2D,
+  stroke: Stroke,
+  w: number,
+  h: number,
+  widthScale = 1,
+) {
   if (stroke.points.length < 4) return;
   ctx.strokeStyle = stroke.tool === "pen" ? PENCIL_COLOR : stroke.color;
   ctx.globalAlpha = 1;
-  ctx.lineWidth = stroke.width;
+  ctx.lineWidth = stroke.width * widthScale;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.beginPath();

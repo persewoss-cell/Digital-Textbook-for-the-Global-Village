@@ -7,11 +7,13 @@ import { getFirstTextbookForGrade, watchAnnotation, watchNote, watchProgress } f
 import { loadPdf } from "@/lib/pdf";
 import { isRoomUnlocked, markRoomUnlocked } from "@/lib/session";
 import { PdfPageCanvas } from "@/pages/TextbookViewer/PdfPageCanvas";
-import { drawStroke } from "@/pages/TextbookViewer/AnnotationLayer";
+import { drawStroke, STROKE_WIDTH_REFERENCE } from "@/pages/TextbookViewer/AnnotationLayer";
 import { DEFAULT_NOTE_FONT_SIZE } from "@/pages/TextbookViewer/NotesOverlay";
 import type { ParticipantDoc, PlacedNote, RoomDoc, StudentProgressDoc, TextbookDoc } from "@/types";
 
 const THUMB_WIDTH = 160;
+// 실제 쪽에서 쓰는 필기 두께/글씨 크기를 이 작은 썸네일 크기에 맞게 비례해서 줄인다.
+const THUMB_SCALE = THUMB_WIDTH / STROKE_WIDTH_REFERENCE;
 
 function ThumbStrokes({
   roomId,
@@ -40,7 +42,7 @@ function ThumbStrokes({
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
         ctx.clearRect(0, 0, width, height);
-        (a?.strokes ?? []).forEach((s) => drawStroke(ctx, s, width, height));
+        (a?.strokes ?? []).forEach((s) => drawStroke(ctx, s, width, height, THUMB_SCALE));
       }),
     [roomId, studentNum, textbookId, page, width, height],
   );
@@ -70,8 +72,6 @@ function ThumbNotes({
     [roomId, studentNum, textbookId, page],
   );
 
-  const THUMB_FONT_SCALE = 0.4;
-
   return (
     <div className="absolute inset-0">
       {items
@@ -79,11 +79,11 @@ function ThumbNotes({
         .map((note) => (
         <div
           key={note.id}
-          className="absolute max-w-[60%] -translate-y-1/2 whitespace-pre truncate rounded bg-white/70 px-0.5 leading-tight text-slate-800"
+          className="absolute max-w-[60%] -translate-y-1/2 truncate rounded-sm bg-white/70 px-px font-normal leading-none text-slate-800"
           style={{
             left: `${note.x * 100}%`,
             top: `${note.y * 100}%`,
-            fontSize: Math.max(6, (note.fontSize ?? DEFAULT_NOTE_FONT_SIZE) * THUMB_FONT_SCALE),
+            fontSize: Math.max(3, (note.fontSize ?? DEFAULT_NOTE_FONT_SIZE) * THUMB_SCALE),
           }}
         >
           {note.text}
@@ -98,12 +98,14 @@ function ParticipantThumbCard({
   participant,
   textbookId,
   pdf,
+  aspect,
   onOpen,
 }: {
   roomId: string;
   participant: ParticipantDoc;
   textbookId: string;
   pdf: PDFDocumentProxy | null;
+  aspect: number;
   onOpen: () => void;
 }) {
   const [progress, setProgress] = useState<StudentProgressDoc | null>(null);
@@ -114,7 +116,8 @@ function ParticipantThumbCard({
   );
 
   const page = Math.min(progress?.lastPage ?? 1, pdf?.numPages ?? 1);
-  const thumbHeight = THUMB_WIDTH * 1.4;
+  // 실제 쪽 비율과 다르면 필기/노트 위치가 쪽 이미지와 어긋나 보이므로 실제 비율을 그대로 쓴다.
+  const thumbHeight = THUMB_WIDTH * aspect;
 
   return (
     <button onClick={onOpen} className="card overflow-hidden text-left transition hover:shadow-md">
@@ -160,6 +163,7 @@ export default function RoomManagePage() {
   const [participants, setParticipants] = useState<ParticipantDoc[]>([]);
   const [textbook, setTextbook] = useState<TextbookDoc | null>(null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
+  const [aspect, setAspect] = useState(1.41);
 
   useEffect(() => {
     if (!roomId) return;
@@ -182,8 +186,13 @@ export default function RoomManagePage() {
       return;
     }
     let cancelled = false;
-    loadPdf(textbook.filePath).then((doc) => {
-      if (!cancelled) setPdf(doc);
+    loadPdf(textbook.filePath).then(async (doc) => {
+      if (cancelled) return;
+      setPdf(doc);
+      const firstPage = await doc.getPage(1);
+      if (cancelled) return;
+      const vp = firstPage.getViewport({ scale: 1 });
+      setAspect(vp.height / vp.width);
     });
     return () => {
       cancelled = true;
@@ -298,6 +307,7 @@ export default function RoomManagePage() {
                 participant={p}
                 textbookId={textbook.id}
                 pdf={pdf}
+                aspect={aspect}
                 onOpen={() =>
                   navigate(`/room/${roomId}/textbook/${textbook.id}?asStudentNum=${p.studentNum}`, {
                     state: { studentName: p.name },

@@ -117,9 +117,25 @@ export const AnnotationLayer = forwardRef<
      * 이 컴포넌트보다 오래 사는 부모(TextbookViewerPage)의 Map에 보관한다. */
     historyMap: Map<number, Stroke[][]>;
     futureMap: Map<number, Stroke[][]>;
+    /** false면 서버에서 불러오거나 저장하지 않고 화면에서만 그려진다 (교재 체험 모드용). */
+    persist?: boolean;
   }
 >(function AnnotationLayer(
-  { uid, textbookId, page, width, height, tool, color, eraserSize, readOnly, onDraw, historyMap, futureMap },
+  {
+    uid,
+    textbookId,
+    page,
+    width,
+    height,
+    tool,
+    color,
+    eraserSize,
+    readOnly,
+    onDraw,
+    historyMap,
+    futureMap,
+    persist = true,
+  },
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -138,15 +154,16 @@ export const AnnotationLayer = forwardRef<
   }, [strokes]);
 
   useEffect(() => {
+    if (!persist) return;
     return watchAnnotation(uid, textbookId, page, (a) => setStrokes(a?.strokes ?? []));
-  }, [uid, textbookId, page]);
+  }, [uid, textbookId, page, persist]);
 
   const commit = (next: Stroke[]) => {
     history.current.push(strokesRef.current);
     if (history.current.length > 50) history.current.shift();
     future.current.length = 0; // 배열 참조를 유지해야 historyMap/futureMap에 계속 연결된다
     setStrokes(next);
-    void saveAnnotation(uid, textbookId, page, next);
+    if (persist) void saveAnnotation(uid, textbookId, page, next);
     onDraw?.();
   };
 
@@ -158,18 +175,18 @@ export const AnnotationLayer = forwardRef<
         const prev = history.current.pop()!;
         future.current.push(strokesRef.current);
         setStrokes(prev);
-        void saveAnnotation(uid, textbookId, page, prev);
+        if (persist) void saveAnnotation(uid, textbookId, page, prev);
       },
       redo: () => {
         if (readOnly || future.current.length === 0) return;
         const next = future.current.pop()!;
         history.current.push(strokesRef.current);
         setStrokes(next);
-        void saveAnnotation(uid, textbookId, page, next);
+        if (persist) void saveAnnotation(uid, textbookId, page, next);
       },
       getCanvas: () => canvasRef.current,
     }),
-    [uid, textbookId, page, readOnly],
+    [uid, textbookId, page, readOnly, persist],
   );
 
   const redraw = (source: Stroke[], extra?: Stroke) => {

@@ -20,12 +20,17 @@ export default function RoomLobbyPage() {
           </p>
         </div>
 
-        <div className="mb-6 flex justify-center gap-2">
-          <button className="btn-primary" onClick={() => navigate("/create-room")}>
-            + 선생님: 방 만들기
-          </button>
-          <Link to="/admin" className="btn-secondary">
-            관리자
+        <div className="mx-auto mb-6 flex max-w-md flex-col gap-2">
+          <div className="flex gap-2">
+            <button className="btn-primary flex-1" onClick={() => navigate("/create-room")}>
+              + 선생님: 방 만들기
+            </button>
+            <Link to="/admin" className="btn-secondary flex-1 text-center">
+              관리자
+            </Link>
+          </div>
+          <Link to="/preview" className="btn-secondary w-full text-center">
+            📖 학년별 교재 체험하기
           </Link>
         </div>
 

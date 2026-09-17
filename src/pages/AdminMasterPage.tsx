@@ -7,7 +7,7 @@ import {
   updateTextbookChapters,
   watchAllTextbooks,
 } from "@/lib/firestore";
-import { getPdfPageCountFromBuffer, loadPdf, suggestChapters } from "@/lib/pdf";
+import { extractRealChapters, getPdfPageCountFromBuffer, loadPdf, suggestChapters } from "@/lib/pdf";
 import { watchRooms } from "@/lib/rooms";
 import { isAdminUnlocked, markAdminUnlocked, clearAdminUnlock } from "@/lib/session";
 import { GRADES, type ChapterMeta, type Grade, type RoomDoc, type TextbookDoc } from "@/types";
@@ -34,7 +34,8 @@ function ChapterEditor({ textbook }: { textbook: TextbookDoc }) {
     setSuggesting(true);
     try {
       const pdf = await loadPdf(textbook.filePath);
-      const suggestions = await suggestChapters(pdf);
+      const real = await extractRealChapters(pdf);
+      const suggestions = real.length > 0 ? real : await suggestChapters(pdf);
       const existingPages = new Set(chapters.map((c) => c.startPage));
       const merged = [...chapters, ...suggestions.filter((s) => !existingPages.has(s.startPage))];
       setChapters(merged.sort((a, b) => a.startPage - b.startPage));

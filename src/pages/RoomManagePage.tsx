@@ -3,12 +3,13 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { AppShell } from "@/components/AppShell";
 import { deleteRoomCascade, getRoom, participantKey, watchParticipants } from "@/lib/rooms";
-import { getFirstTextbookForGrade, watchAnnotation, watchProgress } from "@/lib/firestore";
+import { getFirstTextbookForGrade, watchAnnotation, watchNote, watchProgress } from "@/lib/firestore";
 import { loadPdf } from "@/lib/pdf";
 import { isRoomUnlocked, markRoomUnlocked } from "@/lib/session";
 import { PdfPageCanvas } from "@/pages/TextbookViewer/PdfPageCanvas";
 import { drawStroke } from "@/pages/TextbookViewer/AnnotationLayer";
-import type { ParticipantDoc, RoomDoc, StudentProgressDoc, TextbookDoc } from "@/types";
+import { DEFAULT_NOTE_FONT_SIZE } from "@/pages/TextbookViewer/NotesOverlay";
+import type { ParticipantDoc, PlacedNote, RoomDoc, StudentProgressDoc, TextbookDoc } from "@/types";
 
 const THUMB_WIDTH = 160;
 
@@ -47,6 +48,51 @@ function ThumbStrokes({
   return <canvas ref={canvasRef} className="absolute inset-0" />;
 }
 
+/** 썸네일 카드에도 학생이 남긴 노트 텍스트가 실시간으로 보이도록 작게 축소해서 표시한다. */
+function ThumbNotes({
+  roomId,
+  studentNum,
+  textbookId,
+  page,
+}: {
+  roomId: string;
+  studentNum: number;
+  textbookId: string;
+  page: number;
+}) {
+  const [items, setItems] = useState<PlacedNote[]>([]);
+
+  useEffect(
+    () =>
+      watchNote(participantKey(roomId, studentNum), textbookId, page, (note) => {
+        setItems(note?.items ?? []);
+      }),
+    [roomId, studentNum, textbookId, page],
+  );
+
+  const THUMB_FONT_SCALE = 0.4;
+
+  return (
+    <div className="absolute inset-0">
+      {items
+        .filter((note) => note.text.trim())
+        .map((note) => (
+        <div
+          key={note.id}
+          className="absolute max-w-[60%] -translate-y-1/2 whitespace-pre truncate rounded bg-white/70 px-0.5 leading-tight text-slate-800"
+          style={{
+            left: `${note.x * 100}%`,
+            top: `${note.y * 100}%`,
+            fontSize: Math.max(6, (note.fontSize ?? DEFAULT_NOTE_FONT_SIZE) * THUMB_FONT_SCALE),
+          }}
+        >
+          {note.text}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ParticipantThumbCard({
   roomId,
   participant,
@@ -83,6 +129,12 @@ function ParticipantThumbCard({
               page={page}
               width={THUMB_WIDTH}
               height={thumbHeight}
+            />
+            <ThumbNotes
+              roomId={roomId}
+              studentNum={participant.studentNum}
+              textbookId={textbookId}
+              page={page}
             />
           </div>
         ) : (

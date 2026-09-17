@@ -70,7 +70,7 @@ export function NotesPanel({
               {!readOnly && (
                 <div className="mt-1 flex items-center justify-between">
                   <div className="flex items-center gap-1">
-                    <span className="text-[11px] text-slate-400">글씨</span>
+                    <span className="text-[11px] text-slate-400">글씨 크기 조정</span>
                     <button
                       className="rounded border border-slate-200 px-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100"
                       onClick={(e) => {
@@ -78,7 +78,7 @@ export function NotesPanel({
                         onChangeFontSize(note.id, Math.max(MIN_FONT_SIZE, fontSize - 1));
                       }}
                     >
-                      가▼
+                      ▼
                     </button>
                     <span className="w-7 text-center text-[11px] text-slate-400">{fontSize}</span>
                     <button
@@ -88,7 +88,7 @@ export function NotesPanel({
                         onChangeFontSize(note.id, Math.min(MAX_FONT_SIZE, fontSize + 1));
                       }}
                     >
-                      가▲
+                      ▲
                     </button>
                   </div>
                   <button

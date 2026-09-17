@@ -164,6 +164,15 @@ export async function updateProgress(
   await setDoc(ref, data);
 }
 
+export async function getProgress(
+  uid: string,
+  textbookId: string,
+): Promise<StudentProgressDoc | null> {
+  const id = `${uid}_${textbookId}`;
+  const snap = await getDoc(doc(db, "studentProgress", id));
+  return snap.exists() ? (snap.data() as StudentProgressDoc) : null;
+}
+
 export function watchProgress(
   uid: string,
   textbookId: string,

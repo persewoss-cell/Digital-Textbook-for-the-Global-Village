@@ -3,13 +3,15 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { AppShell } from "@/components/AppShell";
 import {
+  getProgress,
   getTextbook,
   saveNoteItems,
   updateProgress,
+  updateTextbookChapters,
   watchNote,
   watchProgress,
 } from "@/lib/firestore";
-import { extractPageText, loadPdf } from "@/lib/pdf";
+import { extractPageText, extractRealChapters, loadPdf } from "@/lib/pdf";
 import { getRoom, participantKey } from "@/lib/rooms";
 import { isRoomUnlocked, loadParticipantSession, type ParticipantSession } from "@/lib/session";
 import type { AnnotationTool, PlacedNote, RoomDoc, TextbookDoc } from "@/types";
@@ -93,6 +95,7 @@ export default function TextbookViewerPage() {
   const pageRefs = useRef<Map<number, BookPageHandle>>(new Map());
   const lastDrawnPage = useRef<number | null>(null);
   const textCache = useRef<Map<number, string>>(new Map());
+  const progressAppliedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!textbookId) return;
@@ -113,6 +116,17 @@ export default function TextbookViewerPage() {
         const firstPage = await pdfDoc.getPage(1);
         const vp = firstPage.getViewport({ scale: 1 });
         setAspect(vp.height / vp.width);
+
+        if (doc.chapters.length === 0) {
+          // PDF에 포함된 실제 차례를 분석해서 목차를 자동으로 만들어 저장한다.
+          extractRealChapters(pdfDoc)
+            .then((chapters) => {
+              if (cancelled || chapters.length === 0) return;
+              setTextbook((prev) => (prev && prev.id === doc.id ? { ...prev, chapters } : prev));
+              void updateTextbookChapters(doc.id, chapters);
+            })
+            .catch(() => {});
+        }
       } catch {
         if (!cancelled) setError("교재를 불러오는 중 문제가 발생했어요.");
       }
@@ -132,6 +146,20 @@ export default function TextbookViewerPage() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // 학생이 다시 들어오면 마지막으로 공부하던 쪽부터 이어서 볼 수 있도록 진도를 한 번만 불러온다.
+  useEffect(() => {
+    if (readOnly || !effectiveUid || !textbookId) return;
+    const key = `${effectiveUid}_${textbookId}`;
+    if (progressAppliedRef.current === key) return;
+    progressAppliedRef.current = key;
+    getProgress(effectiveUid, textbookId).then((p) => {
+      if (p && p.lastPage > 1) {
+        setCurrentPage(viewMode === "spread" ? spreadStart(p.lastPage) : p.lastPage);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readOnly, effectiveUid, textbookId]);
 
   // 선생님/관리자가 열람 중일 때는 학생이 지금 보고 있는 쪽을 실시간으로 따라간다.
   useEffect(() => {
@@ -185,7 +213,7 @@ export default function TextbookViewerPage() {
     if (noteSaveTimer.current) clearTimeout(noteSaveTimer.current);
     const save = () => saveNoteItems(effectiveUid, textbookId, page, items);
     if (immediate) save();
-    else noteSaveTimer.current = setTimeout(save, 500);
+    else noteSaveTimer.current = setTimeout(save, 150);
   };
 
   const boxWidth = useMemo(() => {
@@ -279,11 +307,17 @@ export default function TextbookViewerPage() {
   };
 
   const handleMagnifierConfirm = (el: HTMLDivElement) => {
-    const targetZoom = Math.min(MAX_ZOOM, zoom / Math.max(magnifierRect.fw, magnifierRect.fh));
+    // 선택한 네모박스가 화면에 꽉 차도록 하는 배율은 현재 줌과 무관하게
+    // "1 / 선택 영역의 비율"이어야 한다 (현재 줌을 또 곱하면 과도하게 확대됨).
+    const targetZoom = Math.min(MAX_ZOOM, 1 / Math.max(magnifierRect.fw, magnifierRect.fh));
     setZoom(targetZoom);
+    // 확대로 인해 레이아웃 크기가 바뀐 뒤(2프레임 대기) 정확한 위치로 스크롤한다.
+    // behavior:"smooth"로 스크롤을 시작한 채 바로 오버레이를 없애면 애니메이션이
+    // 중간에 끊겨 위치가 살짝 어긋나 보이므로, 즉시 이동(auto)으로 스크롤을 끝낸
+    // 뒤에만 오버레이를 닫는다.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        el.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+        el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
         setMagnifierMode(false);
       });
     });
@@ -436,6 +470,7 @@ export default function TextbookViewerPage() {
             setMagnifierMode((v) => !v);
             setTool("none");
           }}
+          onZoomReset={() => setZoom(1)}
           readOnly={readOnly}
         />
 

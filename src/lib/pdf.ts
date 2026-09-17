@@ -2,6 +2,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import type { PDFDocumentProxy, TextItem } from "pdfjs-dist/types/src/display/api";
 // eslint-disable-next-line import/no-unresolved
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
+import type { ChapterMeta } from "@/types";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -76,4 +77,119 @@ export async function suggestChapters(
   }
 
   return suggestions.slice(0, 20);
+}
+
+interface TocRow {
+  ordinal: number;
+  title: string;
+  printedPage: number;
+}
+
+/** y좌표가 가까운(같은 줄) 텍스트 아이템끼리 묶는다. */
+function clusterRowsByY(items: TextItem[]): { y: number; items: { str: string; x: number }[] }[] {
+  const points = items
+    .filter((it) => it.str.trim().length > 0)
+    .map((it) => ({ str: it.str.trim(), x: it.transform[4], y: it.transform[5] }))
+    .sort((a, b) => b.y - a.y);
+  const rows: { y: number; items: { str: string; x: number }[] }[] = [];
+  for (const pt of points) {
+    let row = rows.find((r) => Math.abs(r.y - pt.y) <= 4);
+    if (!row) {
+      row = { y: pt.y, items: [] };
+      rows.push(row);
+    }
+    row.items.push({ str: pt.str, x: pt.x });
+  }
+  return rows;
+}
+
+/**
+ * "차례" 쪽 특유의 표 형태(번호 · 차시 제목 · 쪽번호가 한 줄에 나란히 배치)를 인식해서
+ * 실제 목차 후보를 뽑아낸다. 번호/제목/쪽번호가 왼쪽→가운데→오른쪽 순서로 나열된 줄만 골라낸다.
+ */
+function extractTocRows(items: TextItem[]): TocRow[] {
+  const rows = clusterRowsByY(items);
+  const out: TocRow[] = [];
+  for (const { items: row } of rows) {
+    if (row.length < 3) continue;
+    const sorted = [...row].sort((a, b) => a.x - b.x);
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    if (!/^\d{1,3}$/.test(first.str) || !/^\d{1,3}$/.test(last.str)) continue;
+    const ordinal = Number(first.str);
+    const printedPage = Number(last.str);
+    if (printedPage <= ordinal) continue;
+    const title = sorted
+      .slice(1, -1)
+      .map((r) => r.str)
+      .join(" ")
+      .trim();
+    if (title.length < 2 || title.length > 40 || /^[0-9\s]+$/.test(title)) continue;
+    out.push({ ordinal, title, printedPage });
+  }
+  out.sort((a, b) => a.printedPage - b.printedPage);
+  return out;
+}
+
+/** 단원 도입쪽에 큼직하게 적힌 단원 제목(본문 글자보다 크고, 장식용 큰 번호보다는 작은 글자)을 찾는다. */
+function findUnitTitle(items: TextItem[]): string | null {
+  let best: { str: string; h: number } | null = null;
+  for (const it of items) {
+    const s = it.str.trim();
+    if (!s || /^\d+$/.test(s)) continue;
+    const h = Math.hypot(it.transform[2], it.transform[3]);
+    if (h < 20 || h > 60) continue;
+    if (!best || h > best.h) best = { str: s, h };
+  }
+  return best?.str ?? null;
+}
+
+const isTextItem = (it: unknown): it is TextItem =>
+  typeof it === "object" && it !== null && "str" in it && "transform" in it;
+
+/**
+ * 교재 앞부분의 "차례" 쪽을 분석해서 실제 단원/차시 목차를 만든다.
+ * 1) 쪽 하단에 인쇄된 쪽번호(예: "12 | 지구마을 첫걸음")를 스캔해서
+ *    "인쇄된 쪽번호 → 실제 PDF 쪽번호" 대응표를 만들고,
+ * 2) 앞부분 쪽들 중 번호·제목·쪽번호가 나란히 배열된 표 형태를 찾아 차시 목록으로 삼는다.
+ * PDF 자체에 포함된 실제 차례를 그대로 읽어오는 방식이라 추측(휴리스틱)인 suggestChapters보다 정확하다.
+ */
+export async function extractRealChapters(pdf: PDFDocumentProxy): Promise<ChapterMeta[]> {
+  const printedToPhysical = new Map<number, number>();
+  const scanLimit = Math.min(pdf.numPages, 80);
+  for (let p = 1; p <= scanLimit; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const text = content.items.map((it) => ("str" in it ? it.str : "")).join(" ");
+    const m = text.match(/(?:^|\s)(\d{1,3})\s*\|/) ?? text.match(/\|\s*(\d{1,3})(?:\s|$)/);
+    if (m) {
+      const n = Number(m[1]);
+      if (!printedToPhysical.has(n)) printedToPhysical.set(n, p);
+    }
+  }
+
+  const chapters: ChapterMeta[] = [];
+  let unitCounter = 0;
+  const tocScanLimit = Math.min(pdf.numPages, 20);
+  for (let p = 1; p <= tocScanLimit; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const items = content.items.filter(isTextItem);
+    const rows = extractTocRows(items);
+    if (rows.length < 2) continue;
+
+    unitCounter += 1;
+    const unitTitle = findUnitTitle(items) ?? `단원 ${unitCounter}`;
+    const firstPhysical = printedToPhysical.get(rows[0].printedPage);
+    if (firstPhysical) {
+      chapters.push({ title: `${unitCounter}단원. ${unitTitle}`, startPage: Math.max(1, firstPhysical - 1) });
+    }
+    for (const row of rows) {
+      const physical = printedToPhysical.get(row.printedPage);
+      if (!physical) continue;
+      chapters.push({ title: `${unitCounter}-${row.ordinal}. ${row.title}`, startPage: physical });
+    }
+  }
+
+  return chapters;
 }

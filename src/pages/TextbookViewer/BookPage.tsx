@@ -3,7 +3,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import { PdfPageCanvas } from "./PdfPageCanvas";
 import { AnnotationLayer, type AnnotationLayerHandle } from "./AnnotationLayer";
 import { NotesOverlay } from "./NotesOverlay";
-import type { DrawTool, PlacedNote } from "@/types";
+import type { AnnotationTool, PlacedNote } from "@/types";
 
 export interface BookPageHandle {
   undo: () => void;
@@ -18,7 +18,7 @@ interface BookPageProps {
   boxHeight: number;
   uid: string;
   textbookId: string;
-  tool: DrawTool | "note" | "none";
+  tool: AnnotationTool;
   color: string;
   eraserSize: number;
   readOnly: boolean;

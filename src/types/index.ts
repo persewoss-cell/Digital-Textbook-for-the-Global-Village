@@ -39,7 +39,8 @@ export interface TextbookDoc {
 }
 
 export type DrawTool = "pen" | "colorPen" | "eraser";
-export type AnnotationTool = DrawTool | "note" | "none";
+export type ShapeTool = "rectangle" | "circle" | "line";
+export type AnnotationTool = DrawTool | ShapeTool | "note" | "none";
 
 export interface Stroke {
   tool: "pen" | "colorPen";

@@ -1,5 +1,11 @@
 import { useState } from "react";
-import type { AnnotationTool } from "@/types";
+import type { AnnotationTool, ShapeTool } from "@/types";
+
+const SHAPE_TOOLS: { tool: ShapeTool; icon: string; title: string }[] = [
+  { tool: "line", icon: "／", title: "직선" },
+  { tool: "rectangle", icon: "▭", title: "사각형" },
+  { tool: "circle", icon: "◯", title: "원" },
+];
 
 export interface SearchResult {
   page: number;
@@ -32,6 +38,7 @@ export function Toolbar({
   onCapture,
   magnifierMode,
   onToggleMagnifier,
+  onZoomReset,
   readOnly,
 }: {
   viewMode: "single" | "spread";
@@ -52,6 +59,7 @@ export function Toolbar({
   onCapture: () => void;
   magnifierMode: boolean;
   onToggleMagnifier: () => void;
+  onZoomReset: () => void;
   readOnly: boolean;
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -88,11 +96,16 @@ export function Toolbar({
         </button>
         <button
           className={`btn-ghost px-2 ${magnifierMode ? "bg-brand-100 text-brand-700" : ""}`}
-          title="부분만 크게 보기"
+          title="부분만 크게 보기(돋보기)"
           onClick={onToggleMagnifier}
         >
-          🔲
+          🔍
         </button>
+        {zoom !== 1 && (
+          <button className="btn-ghost px-2 text-xs" title="원래 크기로" onClick={onZoomReset}>
+            ↺100%
+          </button>
+        )}
       </div>
 
       <div className="mx-1 h-5 w-px bg-slate-200" />
@@ -115,7 +128,17 @@ export function Toolbar({
             >
               🖊️
             </button>
-            {tool === "colorPen" &&
+            {SHAPE_TOOLS.map((s) => (
+              <button
+                key={s.tool}
+                className={`btn-ghost px-2 ${tool === s.tool ? "bg-brand-100 text-brand-700" : ""}`}
+                title={s.title}
+                onClick={() => onToolChange(tool === s.tool ? "none" : s.tool)}
+              >
+                {s.icon}
+              </button>
+            ))}
+            {(tool === "colorPen" || tool === "rectangle" || tool === "circle" || tool === "line") &&
               COLORS.map((c) => (
                 <button
                   key={c}
@@ -167,24 +190,24 @@ export function Toolbar({
       {/* search */}
       <div className="relative">
         <button className="btn-ghost px-2" title="검색" onClick={() => setSearchOpen((v) => !v)}>
-          🔍
+          🔎
         </button>
         {searchOpen && (
-          <div className="absolute left-0 top-9 z-20 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+          <div className="absolute left-0 top-9 z-20 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 onSearch(query);
               }}
-              className="mb-2 flex gap-1"
+              className="mb-2 flex flex-nowrap items-center gap-1"
             >
               <input
-                className="input"
+                className="input min-w-0 flex-1"
                 placeholder="교재 내 검색"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
-              <button className="btn-secondary px-3" type="submit">
+              <button className="btn-secondary shrink-0 whitespace-nowrap px-3" type="submit">
                 검색
               </button>
             </form>

@@ -1,6 +1,30 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { saveAnnotation, watchAnnotation } from "@/lib/firestore";
-import type { DrawTool, Stroke } from "@/types";
+import type { DrawTool, ShapeTool, Stroke } from "@/types";
+
+const SHAPE_TOOLS: ShapeTool[] = ["rectangle", "circle", "line"];
+const isShapeTool = (t: DrawTool | ShapeTool | "none"): t is ShapeTool =>
+  (SHAPE_TOOLS as string[]).includes(t);
+
+/** 시작점과 끝점(0-1 정규화 좌표)으로 도형의 외곽선 점 배열을 만든다. */
+function buildShapePoints(kind: ShapeTool, start: [number, number], end: [number, number]): number[] {
+  const [sx, sy] = start;
+  const [ex, ey] = end;
+  if (kind === "line") return [sx, sy, ex, ey];
+  if (kind === "rectangle") return [sx, sy, ex, sy, ex, ey, sx, ey, sx, sy];
+  // circle/ellipse: start~end 사이 사각형에 내접하는 타원
+  const cx = (sx + ex) / 2;
+  const cy = (sy + ey) / 2;
+  const rx = Math.abs(ex - sx) / 2;
+  const ry = Math.abs(ey - sy) / 2;
+  const points: number[] = [];
+  const steps = 40;
+  for (let i = 0; i <= steps; i++) {
+    const angle = (i / steps) * Math.PI * 2;
+    points.push(cx + rx * Math.cos(angle), cy + ry * Math.sin(angle));
+  }
+  return points;
+}
 
 export interface AnnotationLayerHandle {
   undo: () => void;
@@ -63,7 +87,7 @@ export const AnnotationLayer = forwardRef<
     page: number;
     width: number;
     height: number;
-    tool: DrawTool | "none";
+    tool: DrawTool | ShapeTool | "none";
     color: string;
     eraserSize: number;
     readOnly: boolean;
@@ -77,6 +101,8 @@ export const AnnotationLayer = forwardRef<
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const strokesRef = useRef<Stroke[]>([]);
   const drawing = useRef<number[] | null>(null);
+  const shapeStart = useRef<[number, number] | null>(null);
+  const shapeDraft = useRef<number[] | null>(null);
   const erasingDraft = useRef<Stroke[] | null>(null);
   const history = useRef<Stroke[][]>([]);
   const future = useRef<Stroke[][]>([]);
@@ -151,7 +177,7 @@ export const AnnotationLayer = forwardRef<
     ];
   };
 
-  const strokeWidth = tool === "colorPen" ? 2.5 : 2;
+  const strokeWidth = tool === "colorPen" || isShapeTool(tool) ? 2.5 : 2;
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (readOnly || tool === "none") return;
@@ -164,7 +190,12 @@ export const AnnotationLayer = forwardRef<
       return;
     }
     const [x, y] = toLocal(e.clientX, e.clientY);
-    drawing.current = [x / canvasRef.current!.width, y / canvasRef.current!.height];
+    const canvas = canvasRef.current!;
+    if (isShapeTool(tool)) {
+      shapeStart.current = [x / canvas.width, y / canvas.height];
+      return;
+    }
+    drawing.current = [x / canvas.width, y / canvas.height];
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -176,6 +207,14 @@ export const AnnotationLayer = forwardRef<
       const canvas = canvasRef.current!;
       erasingDraft.current = eraseAtPoint(erasingDraft.current, px, py, canvas.width, canvas.height, eraserSize);
       redraw(erasingDraft.current);
+      return;
+    }
+    if (isShapeTool(tool) && shapeStart.current) {
+      const [x, y] = toLocal(e.clientX, e.clientY);
+      const canvas = canvasRef.current!;
+      const points = buildShapePoints(tool, shapeStart.current, [x / canvas.width, y / canvas.height]);
+      shapeDraft.current = points;
+      redraw(strokes, { tool: "colorPen", color, width: strokeWidth, points });
       return;
     }
     if (!drawing.current) return;
@@ -191,6 +230,14 @@ export const AnnotationLayer = forwardRef<
       if (next.length !== strokes.length || next.some((s, i) => s !== strokes[i])) {
         commit(next);
       }
+      return;
+    }
+    if (isShapeTool(tool) && shapeStart.current) {
+      const points = shapeDraft.current;
+      shapeStart.current = null;
+      shapeDraft.current = null;
+      if (!points || points.length < 4) return;
+      commit([...strokes, { tool: "colorPen", color, width: strokeWidth, points }]);
       return;
     }
     if (!drawing.current) return;
@@ -216,7 +263,12 @@ export const AnnotationLayer = forwardRef<
           WebkitUserSelect: "none",
           WebkitTouchCallout: "none",
           ...({ WebkitUserDrag: "none" } as Record<string, string>),
-          cursor: tool === "eraser" ? "none" : tool === "pen" || tool === "colorPen" ? "crosshair" : "default",
+          cursor:
+            tool === "eraser"
+              ? "none"
+              : tool === "pen" || tool === "colorPen" || isShapeTool(tool)
+                ? "crosshair"
+                : "default",
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}

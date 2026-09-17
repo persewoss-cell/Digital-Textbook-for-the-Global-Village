@@ -93,12 +93,30 @@ export default function TextbookViewerPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ w: 900, h: 600 });
   const pageRefs = useRef<Map<number, BookPageHandle>>(new Map());
-  const lastDrawnPage = useRef<number | null>(null);
   const textCache = useRef<Map<number, string>>(new Map());
   const progressAppliedRef = useRef<string | null>(null);
   // 쪽을 넘겼다가 되돌아와도 실행취소 기록이 살아있도록 쪽 번호별로 별도 보관한다.
   const historyMapRef = useRef<Map<number, Stroke[][]>>(new Map());
   const futureMapRef = useRef<Map<number, Stroke[][]>>(new Map());
+
+  // 필기(그리기) 실행취소와 노트 실행취소는 서로 다른 곳에서 관리되기 때문에(그리기는
+  // AnnotationLayer 내부, 노트는 여기), 실행취소 버튼 하나가 "둘 중 더 최근에 한 일"을
+  // 올바르게 되돌리도록 전역 일련번호로 순서를 비교한다.
+  const actionSeqRef = useRef(0);
+  const nextActionSeq = () => ++actionSeqRef.current;
+  const lastDrawAction = useRef<{ seq: number; page: number } | null>(null);
+  const lastNoteAction = useRef<{ seq: number; page: number } | null>(null);
+  const lastUndoneType = useRef<"note" | "draw" | null>(null);
+  const lastUndonePage = useRef<number | null>(null);
+  const notesHistoryMapRef = useRef<Map<number, { seq: number; prev: PlacedNote[] }[]>>(new Map());
+  const notesFutureMapRef = useRef<Map<number, { seq: number; next: PlacedNote[] }[]>>(new Map());
+  // 타이핑/드래그처럼 연속으로 여러 번 호출되는 노트 편집은, 잠시 멈출 때까지 기다렸다가
+  // "그 burst 이전 상태"를 통째로 하나의 실행취소 단계로 기록한다(한 글자마다 기록하면 안 됨).
+  const noteEditSession = useRef<{
+    page: number;
+    preState: PlacedNote[];
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
 
   useEffect(() => {
     if (!textbookId) return;
@@ -192,8 +210,10 @@ export default function TextbookViewerPage() {
   const primaryPage = pagesToShow[0] ?? currentPage;
 
   useEffect(() => {
+    commitNoteEditSession();
     setActiveNoteId(null);
     setActiveNotePage(primaryPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primaryPage]);
 
   useEffect(() => {
@@ -217,6 +237,39 @@ export default function TextbookViewerPage() {
     const save = () => saveNoteItems(effectiveUid, textbookId, page, items);
     if (immediate) save();
     else noteSaveTimer.current = setTimeout(save, 150);
+  };
+
+  const pushNoteHistory = (page: number, prevItems: PlacedNote[]) => {
+    const stack = notesHistoryMapRef.current.get(page) ?? [];
+    const seq = nextActionSeq();
+    stack.push({ seq, prev: prevItems });
+    if (stack.length > 50) stack.shift();
+    notesHistoryMapRef.current.set(page, stack);
+    notesFutureMapRef.current.set(page, []);
+    lastNoteAction.current = { seq, page };
+  };
+
+  // 진행 중인 타이핑/드래그 burst를 하나의 실행취소 단계로 확정해서 기록한다.
+  const commitNoteEditSession = () => {
+    const session = noteEditSession.current;
+    if (!session) return;
+    clearTimeout(session.timer);
+    noteEditSession.current = null;
+    pushNoteHistory(session.page, session.preState);
+  };
+
+  // 같은 쪽에서 계속 타이핑/드래그하는 동안은 타이머만 미루고, 잠시 멈추면 그때 기록한다.
+  const touchNoteEditSession = (page: number) => {
+    const existing = noteEditSession.current;
+    if (existing && existing.page === page) {
+      clearTimeout(existing.timer);
+      existing.timer = setTimeout(commitNoteEditSession, 800);
+      return;
+    }
+    if (existing) commitNoteEditSession();
+    const preState = notesByPage.get(page) ?? [];
+    const timer = setTimeout(commitNoteEditSession, 800);
+    noteEditSession.current = { page, preState, timer };
   };
 
   const boxWidth = useMemo(() => {
@@ -303,11 +356,60 @@ export default function TextbookViewerPage() {
   // 마지막으로 그린 쪽이 화면에서 넘어가 사라진 상태라면(이미 언마운트됨) 실행취소가
   // 조용히 아무 효과도 없는 것처럼 보이므로, 그럴 땐 현재 보이는 쪽을 대상으로 한다.
   const undoRedoTarget = () => {
-    const target = lastDrawnPage.current;
-    return target !== null && pageRefs.current.has(target) ? target : primaryPage;
+    const target = lastDrawAction.current?.page;
+    return target !== undefined && pageRefs.current.has(target) ? target : primaryPage;
   };
-  const handleUndo = () => pageRefs.current.get(undoRedoTarget())?.undo();
-  const handleRedo = () => pageRefs.current.get(undoRedoTarget())?.redo();
+
+  // 필기(연필/색펜/도형/지우개)와 노트, 둘 중 더 최근에 한 일을 실행취소한다.
+  const handleUndo = () => {
+    commitNoteEditSession();
+    const noteAction = lastNoteAction.current;
+    const drawAction = lastDrawAction.current;
+    const noteIsNewer = noteAction !== null && (drawAction === null || noteAction.seq > drawAction.seq);
+
+    if (noteIsNewer) {
+      const stack = notesHistoryMapRef.current.get(noteAction.page);
+      if (!stack || stack.length === 0) return;
+      const entry = stack.pop()!;
+      const currentItems = notesByPage.get(noteAction.page) ?? [];
+      const futureStack = notesFutureMapRef.current.get(noteAction.page) ?? [];
+      futureStack.push({ seq: entry.seq, next: currentItems });
+      notesFutureMapRef.current.set(noteAction.page, futureStack);
+      setNotesByPage((prev) => new Map(prev).set(noteAction.page, entry.prev));
+      persistNotesForPage(noteAction.page, entry.prev, true);
+      const newTop = stack[stack.length - 1];
+      lastNoteAction.current = newTop ? { seq: newTop.seq, page: noteAction.page } : null;
+      lastUndoneType.current = "note";
+      lastUndonePage.current = noteAction.page;
+      return;
+    }
+
+    if (drawAction) {
+      pageRefs.current.get(undoRedoTarget())?.undo();
+      lastUndoneType.current = "draw";
+      lastUndonePage.current = undoRedoTarget();
+    }
+  };
+
+  const handleRedo = () => {
+    if (lastUndoneType.current === "note" && lastUndonePage.current !== null) {
+      const page = lastUndonePage.current;
+      const futureStack = notesFutureMapRef.current.get(page);
+      if (!futureStack || futureStack.length === 0) return;
+      const entry = futureStack.pop()!;
+      const currentItems = notesByPage.get(page) ?? [];
+      const histStack = notesHistoryMapRef.current.get(page) ?? [];
+      histStack.push({ seq: entry.seq, prev: currentItems });
+      notesHistoryMapRef.current.set(page, histStack);
+      lastNoteAction.current = { seq: entry.seq, page };
+      setNotesByPage((prev) => new Map(prev).set(page, entry.next));
+      persistNotesForPage(page, entry.next, true);
+      lastUndoneType.current = null;
+      return;
+    }
+    pageRefs.current.get(undoRedoTarget())?.redo();
+    lastUndoneType.current = null;
+  };
 
   const handleMagnifierConfirm = (el: HTMLDivElement) => {
     // 선택한 네모박스가 화면에 꽉 차도록 하는 배율은 현재 줌과 무관하게
@@ -375,8 +477,10 @@ export default function TextbookViewerPage() {
 
   const handleCreateNote = (page: number, x: number, y: number) => {
     if (readOnly) return;
+    commitNoteEditSession();
     const id = `n${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
     const current = notesByPage.get(page) ?? [];
+    pushNoteHistory(page, current);
     const next = [...current, { id, x, y, text: "" }];
     setNotesByPage((prev) => new Map(prev).set(page, next));
     setActiveNotePage(page);
@@ -389,25 +493,31 @@ export default function TextbookViewerPage() {
     setActiveNoteId(id);
   };
   const handleUpdateNoteText = (id: string, text: string) => {
+    touchNoteEditSession(activeNotePage);
     const current = notesByPage.get(activeNotePage) ?? [];
     const next = current.map((n) => (n.id === id ? { ...n, text } : n));
     setNotesByPage((prev) => new Map(prev).set(activeNotePage, next));
     persistNotesForPage(activeNotePage, next);
   };
   const handleChangeNoteFontSize = (id: string, fontSize: number) => {
+    commitNoteEditSession();
     const current = notesByPage.get(activeNotePage) ?? [];
+    pushNoteHistory(activeNotePage, current);
     const next = current.map((n) => (n.id === id ? { ...n, fontSize } : n));
     setNotesByPage((prev) => new Map(prev).set(activeNotePage, next));
     persistNotesForPage(activeNotePage, next);
   };
   const handleMoveNote = (page: number, id: string, x: number, y: number) => {
+    touchNoteEditSession(page);
     const current = notesByPage.get(page) ?? [];
     const next = current.map((n) => (n.id === id ? { ...n, x, y } : n));
     setNotesByPage((prev) => new Map(prev).set(page, next));
     persistNotesForPage(page, next);
   };
   const handleDeleteNote = (id: string) => {
+    commitNoteEditSession();
     const current = notesByPage.get(activeNotePage) ?? [];
+    pushNoteHistory(activeNotePage, current);
     const next = current.filter((n) => n.id !== id);
     setNotesByPage((prev) => new Map(prev).set(activeNotePage, next));
     if (activeNoteId === id) setActiveNoteId(null);
@@ -482,9 +592,17 @@ export default function TextbookViewerPage() {
 
           <div ref={containerRef} className="relative flex-1 overflow-hidden bg-slate-200">
             <div className="absolute inset-0 overflow-auto">
-              <div className="flex min-h-full items-center justify-center p-4">
+              {/* items-center/justify-center로 가운데 정렬하면, 확대해서 내용이 컨테이너보다
+                  커졌을 때 브라우저가 넘치는 부분을 좌우/상하로 "똑같이" 넘치게 만드는데,
+                  그중 시작(왼쪽/위) 쪽으로 넘친 부분은 스크롤해도 닿지 않는 버그가 있다.
+                  (짝수쪽처럼 스프레드의 왼쪽에 있는 페이지를 돋보기로 확대하면 그 쪽으로
+                  스크롤이 안 되고 가운데만 보이던 원인이 바로 이것.) 대신 바깥은 정렬 없이
+                  두고 안쪽 내용에 margin:auto로 가운데를 맞추면, 내용이 작을 때는 그대로
+                  가운데 정렬되면서 커졌을 때는 처음(왼쪽/위)부터 자연스럽게 넘쳐서 전체를
+                  스크롤로 온전히 볼 수 있다. */}
+              <div className="flex min-h-full p-4">
                 <div
-                  className="relative flex shadow-2xl"
+                  className="relative m-auto flex shadow-2xl"
                   style={{ gap: PAGE_GAP, opacity: pageOpacity, transition: "opacity 120ms" }}
                 >
                   {viewMode === "spread" && pagesToShow.length === 1 && pagesToShow[0] === 1 && (
@@ -508,7 +626,7 @@ export default function TextbookViewerPage() {
                         eraserSize={eraserSize}
                         readOnly={readOnly}
                         onDraw={() => {
-                          lastDrawnPage.current = n;
+                          lastDrawAction.current = { seq: nextActionSeq(), page: n };
                         }}
                         historyMap={historyMapRef.current}
                         futureMap={futureMapRef.current}

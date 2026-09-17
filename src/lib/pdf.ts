@@ -182,12 +182,21 @@ export async function extractRealChapters(pdf: PDFDocumentProxy): Promise<Chapte
     const unitTitle = findUnitTitle(items) ?? `단원 ${unitCounter}`;
     const firstPhysical = printedToPhysical.get(rows[0].printedPage);
     if (firstPhysical) {
-      chapters.push({ title: `${unitCounter}단원. ${unitTitle}`, startPage: Math.max(1, firstPhysical - 1) });
+      const unitStart = Math.max(1, firstPhysical - 1);
+      chapters.push({
+        title: `${unitCounter}단원. ${unitTitle}`,
+        startPage: unitStart,
+        printedPage: rows[0].printedPage - 1 > 0 ? rows[0].printedPage - 1 : undefined,
+      });
     }
     for (const row of rows) {
       const physical = printedToPhysical.get(row.printedPage);
       if (!physical) continue;
-      chapters.push({ title: `${unitCounter}-${row.ordinal}. ${row.title}`, startPage: physical });
+      chapters.push({
+        title: `${unitCounter}-${row.ordinal}. ${row.title}`,
+        startPage: physical,
+        printedPage: row.printedPage,
+      });
     }
   }
 

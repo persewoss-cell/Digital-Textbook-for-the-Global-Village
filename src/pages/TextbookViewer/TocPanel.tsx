@@ -5,16 +5,27 @@ export function TocPanel({
   chapters,
   currentPage,
   onJump,
+  onClose,
 }: {
   title: string;
   chapters: ChapterMeta[];
   currentPage: number;
   onJump: (page: number) => void;
+  onClose?: () => void;
 }) {
   return (
     <div className="flex h-full w-64 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white">
-      <div className="border-b border-slate-100 p-4">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-100 p-4">
         <h2 className="font-bold text-slate-800">{title}</h2>
+        {onClose && (
+          <button
+            className="shrink-0 rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            title="목차 닫기"
+            onClick={onClose}
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       <div className="p-3">
@@ -34,7 +45,7 @@ export function TocPanel({
                   }`}
                 >
                   <span className="min-w-0 flex-1 truncate">{c.title}</span>
-                  <span className="shrink-0 text-[10px] text-slate-400">{c.startPage}쪽</span>
+                  <span className="shrink-0 text-[10px] text-slate-400">{c.printedPage ?? c.startPage}쪽</span>
                 </button>
               </li>
             );

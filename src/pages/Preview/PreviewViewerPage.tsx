@@ -25,7 +25,6 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 const PAGE_GAP = 10;
 const CONTAINER_PADDING = 16;
-const BOTTOM_BAR_SPACE = 64;
 const FIT_SAFETY_MARGIN = 12;
 
 // 체험 모드는 방/학생 계정이 없으므로 uid는 저장에 쓰이지 않는 자리표시자일 뿐이다.
@@ -71,6 +70,13 @@ export default function PreviewViewerPage() {
   const whiteboardRef = useRef<AnnotationLayerHandle>(null);
   const whiteboardHistoryMap = useRef<Map<number, Stroke[][]>>(new Map());
   const whiteboardFutureMap = useRef<Map<number, Stroke[][]>>(new Map());
+
+  // 태블릿처럼 화면이 좁을 때는 목차/노트 패널이 교재가 보일 자리를 너무 많이 차지해서
+  // 교재 주변에 회색 여백이 크게 남는다. 넓은 화면(데스크톱)에서는 기본으로 열어 두고,
+  // 좁은 화면에서는 기본으로 닫아서 교재가 최대한 크게 보이게 하고, 필요하면 툴바에서
+  // 언제든 다시 열 수 있게 한다.
+  const [showToc, setShowToc] = useState(() => window.innerWidth >= 1024);
+  const [showNotes, setShowNotes] = useState(() => window.innerWidth >= 1024);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -220,7 +226,7 @@ export default function PreviewViewerPage() {
       100,
       containerSize.w - CONTAINER_PADDING * 2 - PAGE_GAP * (pageCount - 1) - FIT_SAFETY_MARGIN,
     );
-    const availH = Math.max(100, containerSize.h - CONTAINER_PADDING * 2 - BOTTOM_BAR_SPACE - FIT_SAFETY_MARGIN);
+    const availH = Math.max(100, containerSize.h - CONTAINER_PADDING * 2 - FIT_SAFETY_MARGIN);
     const perPageMaxW = availW / pageCount;
     const widthFromHeight = availH / aspect;
     const fit = Math.min(perPageMaxW, widthFromHeight);
@@ -520,15 +526,22 @@ export default function PreviewViewerPage() {
           whiteboardMode={whiteboardMode}
           onToggleWhiteboard={() => setWhiteboardMode((v) => !v)}
           onClearWhiteboard={() => whiteboardRef.current?.clear()}
-          currentPage={currentPage}
-          numPages={numPages}
-          onJumpToPage={jumpTo}
+          showToc={showToc}
+          onToggleToc={() => setShowToc((v) => !v)}
+          showNotes={showNotes}
+          onToggleNotes={() => setShowNotes((v) => !v)}
           readOnly={false}
         />
 
         <div className="flex flex-1 overflow-hidden">
-          {!whiteboardMode && (
-            <TocPanel title={textbook.title} chapters={textbook.chapters} currentPage={currentPage} onJump={jumpTo} />
+          {!whiteboardMode && showToc && (
+            <TocPanel
+              title={textbook.title}
+              chapters={textbook.chapters}
+              currentPage={currentPage}
+              onJump={jumpTo}
+              onClose={() => setShowToc(false)}
+            />
           )}
 
           <div ref={containerRef} className="relative flex-1 overflow-hidden bg-slate-200">
@@ -562,7 +575,7 @@ export default function PreviewViewerPage() {
               </div>
             ) : (
               <>
-                <div ref={scrollRef} className="absolute inset-0 overflow-auto">
+                <div ref={scrollRef} className="absolute inset-0 overflow-auto" style={{ touchAction: "pan-x pan-y" }}>
                   <div className="flex min-h-full p-4">
                     <div
                       ref={contentRef}
@@ -638,7 +651,7 @@ export default function PreviewViewerPage() {
             )}
           </div>
 
-          {!whiteboardMode && (
+          {!whiteboardMode && showNotes && (
             <NotesPanel
               items={notesByPage.get(activeNotePage) ?? []}
               activeId={activeNoteId}
@@ -648,6 +661,7 @@ export default function PreviewViewerPage() {
               onChangeText={handleUpdateNoteText}
               onChangeFontSize={handleChangeNoteFontSize}
               onDelete={handleDeleteNote}
+              onClose={() => setShowNotes(false)}
             />
           )}
         </div>

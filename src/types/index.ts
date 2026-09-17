@@ -24,7 +24,8 @@ export interface ParticipantDoc {
 
 export interface ChapterMeta {
   title: string;
-  startPage: number; // 1-based page number in the PDF
+  startPage: number; // 1-based page number in the PDF (실제 이동에 쓰는 물리적 쪽번호)
+  printedPage?: number; // 교재에 실제로 인쇄된 쪽번호 (화면 표시용, startPage와 다를 수 있음)
 }
 
 export interface TextbookDoc {

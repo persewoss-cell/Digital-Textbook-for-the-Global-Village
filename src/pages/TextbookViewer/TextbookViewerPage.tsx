@@ -37,7 +37,6 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 const PAGE_GAP = 10;
 const CONTAINER_PADDING = 16;
-const BOTTOM_BAR_SPACE = 64;
 const FIT_SAFETY_MARGIN = 12;
 
 // 표지(1쪽)는 혼자 오른쪽에 보이고, 2쪽부터 (2,3) (4,5) (6,7)... 순서로 짝을 이룬다.
@@ -109,6 +108,13 @@ export default function TextbookViewerPage() {
   const whiteboardRef = useRef<AnnotationLayerHandle>(null);
   const whiteboardHistoryMap = useRef<Map<number, Stroke[][]>>(new Map());
   const whiteboardFutureMap = useRef<Map<number, Stroke[][]>>(new Map());
+
+  // 태블릿처럼 화면이 좁을 때는 목차/노트 패널이 교재가 보일 자리를 너무 많이 차지해서
+  // 교재 주변에 회색 여백이 크게 남는다. 넓은 화면(데스크톱)에서는 기본으로 열어 두고,
+  // 좁은 화면에서는 기본으로 닫아서 교재가 최대한 크게 보이게 하고, 필요하면 툴바에서
+  // 언제든 다시 열 수 있게 한다.
+  const [showToc, setShowToc] = useState(() => window.innerWidth >= 1024);
+  const [showNotes, setShowNotes] = useState(() => window.innerWidth >= 1024);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -322,7 +328,7 @@ export default function TextbookViewerPage() {
       100,
       containerSize.w - CONTAINER_PADDING * 2 - PAGE_GAP * (pageCount - 1) - FIT_SAFETY_MARGIN,
     );
-    const availH = Math.max(100, containerSize.h - CONTAINER_PADDING * 2 - BOTTOM_BAR_SPACE - FIT_SAFETY_MARGIN);
+    const availH = Math.max(100, containerSize.h - CONTAINER_PADDING * 2 - FIT_SAFETY_MARGIN);
     const perPageMaxW = availW / pageCount;
     const widthFromHeight = availH / aspect;
     const fit = Math.min(perPageMaxW, widthFromHeight);
@@ -631,9 +637,6 @@ export default function TextbookViewerPage() {
           onEraserSizeChange={setEraserSize}
           onUndo={handleUndo}
           onRedo={handleRedo}
-          currentPage={currentPage}
-          numPages={numPages}
-          onJumpToPage={jumpTo}
           onSearch={handleSearch}
           searchResults={searchResults}
           onJumpToResult={jumpTo}
@@ -647,12 +650,22 @@ export default function TextbookViewerPage() {
           whiteboardMode={whiteboardMode}
           onToggleWhiteboard={() => setWhiteboardMode((v) => !v)}
           onClearWhiteboard={() => whiteboardRef.current?.clear()}
+          showToc={showToc}
+          onToggleToc={() => setShowToc((v) => !v)}
+          showNotes={showNotes}
+          onToggleNotes={() => setShowNotes((v) => !v)}
           readOnly={readOnly}
         />
 
         <div className="flex flex-1 overflow-hidden">
-          {!whiteboardMode && (
-            <TocPanel title={textbook.title} chapters={textbook.chapters} currentPage={currentPage} onJump={jumpTo} />
+          {!whiteboardMode && showToc && (
+            <TocPanel
+              title={textbook.title}
+              chapters={textbook.chapters}
+              currentPage={currentPage}
+              onJump={jumpTo}
+              onClose={() => setShowToc(false)}
+            />
           )}
 
           <div ref={containerRef} className="relative flex-1 overflow-hidden bg-slate-200">
@@ -686,7 +699,14 @@ export default function TextbookViewerPage() {
               </div>
             ) : (
               <>
-                <div ref={scrollRef} className="absolute inset-0 overflow-auto">
+                <div
+                  ref={scrollRef}
+                  className="absolute inset-0 overflow-auto"
+                  style={{ touchAction: "pan-x pan-y" }}
+                >
+                  {/* touchAction: 브라우저 기본 두 손가락 확대(핀치)는 막고 한 손가락 스크롤(pan)은
+                      그대로 둬서, 두 손가락으로 꼬집을 때 화면(브라우저) 전체가 아니라 usePinchZoom이
+                      다루는 이 회색 영역 안의 교재만 확대/축소되게 한다. */}
                   {/* items-center/justify-center로 가운데 정렬하면, 확대해서 내용이 컨테이너보다
                       커졌을 때 브라우저가 넘치는 부분을 좌우/상하로 "똑같이" 넘치게 만드는데,
                       그중 시작(왼쪽/위) 쪽으로 넘친 부분은 스크롤해도 닿지 않는 버그가 있다.
@@ -769,7 +789,7 @@ export default function TextbookViewerPage() {
             )}
           </div>
 
-          {!whiteboardMode && (
+          {!whiteboardMode && showNotes && (
             <NotesPanel
               items={notesByPage.get(activeNotePage) ?? []}
               activeId={activeNoteId}
@@ -780,6 +800,7 @@ export default function TextbookViewerPage() {
               onChangeText={handleUpdateNoteText}
               onChangeFontSize={handleChangeNoteFontSize}
               onDelete={handleDeleteNote}
+              onClose={() => setShowNotes(false)}
             />
           )}
         </div>

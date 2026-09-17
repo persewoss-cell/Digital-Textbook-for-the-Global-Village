@@ -21,6 +21,7 @@ export function NotesPanel({
   onChangeText,
   onChangeFontSize,
   onDelete,
+  onClose,
 }: {
   items: PlacedNote[];
   activeId: string | null;
@@ -31,6 +32,7 @@ export function NotesPanel({
   onChangeText: (id: string, text: string) => void;
   onChangeFontSize: (id: string, fontSize: number) => void;
   onDelete: (id: string) => void;
+  onClose?: () => void;
 }) {
   const refs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
 
@@ -47,7 +49,18 @@ export function NotesPanel({
   return (
     <div className="flex h-full w-72 shrink-0 flex-col border-l border-slate-200 bg-white">
       <div className="border-b border-slate-100 p-4">
-        <h2 className="font-bold text-slate-800">{studentLabel ? `${studentLabel}의 노트` : "내 노트"}</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-bold text-slate-800">{studentLabel ? `${studentLabel}의 노트` : "내 노트"}</h2>
+          {onClose && (
+            <button
+              className="shrink-0 rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              title="노트 닫기"
+              onClick={onClose}
+            >
+              ✕
+            </button>
+          )}
+        </div>
         <p className="text-xs text-slate-400">
           {readOnly
             ? "읽기 전용이에요."

@@ -29,7 +29,7 @@ export default function RoomLobbyPage() {
               관리자
             </Link>
           </div>
-          <Link to="/preview" className="btn-secondary w-full text-center">
+          <Link to="/preview" className="btn w-full bg-orange-500 text-center text-white hover:bg-orange-600">
             📖 학년별 교재 체험하기
           </Link>
         </div>

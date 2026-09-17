@@ -2,6 +2,10 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { saveAnnotation, watchAnnotation } from "@/lib/firestore";
 import type { DrawTool, ShapeTool, Stroke } from "@/types";
 
+// iOS Safari 등에서 캔버스가 너무 크면(가로/세로 한 변 기준) 그리기가 깨지거나
+// 캔버스가 비어버리는 문제가 있어 안전선을 둔다 (PdfPageCanvas와 동일한 이유).
+const MAX_CANVAS_DIMENSION = 4096;
+
 export const SHAPE_TOOLS: ShapeTool[] = ["line", "arrow", "rectangle", "triangle", "circle"];
 const isShapeTool = (t: DrawTool | ShapeTool | "none"): t is ShapeTool =>
   (SHAPE_TOOLS as string[]).includes(t);
@@ -246,8 +250,12 @@ export const AnnotationLayer = forwardRef<
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.width = width;
-    canvas.height = height;
+    // 브라우저별 캔버스 최대 크기 한도를 넘으면 그리기가 깨지므로 안전하게 낮춘다
+    // (PdfPageCanvas와 같은 이유 — 크게 확대했을 때 필기 캔버스도 함께 문제가 없도록).
+    const largestSide = Math.max(width, height);
+    const shrink = largestSide > MAX_CANVAS_DIMENSION ? MAX_CANVAS_DIMENSION / largestSide : 1;
+    canvas.width = width * shrink;
+    canvas.height = height * shrink;
     redraw(strokes);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strokes, width, height]);

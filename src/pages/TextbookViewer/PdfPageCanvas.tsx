@@ -13,6 +13,13 @@ function useDevicePixelRatio() {
   return dpr;
 }
 
+// iOS Safari 등 여러 브라우저는 캔버스 한 변이나 (가로*세로) 넓이가 일정 크기를
+// 넘으면 그리기를 조용히 실패시키거나(하얗게 비거나 내용이 깨짐) 캔버스를 아예
+// 지워버린다. 확대를 많이 했을 때(예: 370%대) 교재가 사라지거나 이상하게 보이던
+// 원인이 이것이었다 — 확대 배율 * devicePixelRatio가 곱해지면서 실제 캔버스 해상도가
+// 이 한계를 넘어섰던 것. 항상 안전한 한도 안으로 낮춰서 그린다.
+const MAX_CANVAS_DIMENSION = 4096;
+
 export const PdfPageCanvas = forwardRef<
   HTMLCanvasElement,
   {
@@ -33,8 +40,13 @@ export const PdfPageCanvas = forwardRef<
       if (cancelled) return;
       const base = page.getViewport({ scale: 1 });
       const cssHeight = (width * base.height) / base.width;
-      const scale = (width / base.width) * dpr;
-      const viewport = page.getViewport({ scale });
+      let scale = (width / base.width) * dpr;
+      let viewport = page.getViewport({ scale });
+      const largestSide = Math.max(viewport.width, viewport.height);
+      if (largestSide > MAX_CANVAS_DIMENSION) {
+        scale *= MAX_CANVAS_DIMENSION / largestSide;
+        viewport = page.getViewport({ scale });
+      }
       const canvas = canvasRef.current;
       if (!canvas) return;
       canvas.width = viewport.width;

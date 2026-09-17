@@ -19,6 +19,7 @@ import { Toolbar, type SearchResult } from "@/pages/TextbookViewer/Toolbar";
 import { TocPanel } from "@/pages/TextbookViewer/TocPanel";
 import { NotesPanel } from "@/pages/TextbookViewer/NotesPanel";
 import { MagnifierOverlay, type MagnifierRect } from "@/pages/TextbookViewer/MagnifierOverlay";
+import { usePinchZoom } from "@/pages/TextbookViewer/usePinchZoom";
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
@@ -72,6 +73,8 @@ export default function PreviewViewerPage() {
   const whiteboardFutureMap = useRef<Map<number, Stroke[][]>>(new Map());
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ w: 900, h: 600 });
   const pageRefs = useRef<Map<number, BookPageHandle>>(new Map());
   const textCache = useRef<Map<number, string>>(new Map());
@@ -142,6 +145,16 @@ export default function PreviewViewerPage() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  usePinchZoom({
+    scrollRef,
+    contentRef,
+    zoom,
+    setZoom,
+    minZoom: MIN_ZOOM,
+    maxZoom: MAX_ZOOM,
+    enabled: !whiteboardMode && !magnifierMode && tool === "none",
+  });
 
   const pagesToShow = useMemo(() => {
     if (viewMode === "single") return [currentPage];
@@ -500,6 +513,9 @@ export default function PreviewViewerPage() {
           whiteboardMode={whiteboardMode}
           onToggleWhiteboard={() => setWhiteboardMode((v) => !v)}
           onClearWhiteboard={() => whiteboardRef.current?.clear()}
+          currentPage={currentPage}
+          numPages={numPages}
+          onJumpToPage={jumpTo}
           readOnly={false}
         />
 
@@ -539,9 +555,10 @@ export default function PreviewViewerPage() {
               </div>
             ) : (
               <>
-                <div className="absolute inset-0 overflow-auto">
+                <div ref={scrollRef} className="absolute inset-0 overflow-auto">
                   <div className="flex min-h-full p-4">
                     <div
+                      ref={contentRef}
                       className="relative m-auto flex shadow-2xl"
                       style={{ gap: PAGE_GAP, opacity: pageOpacity, transition: "opacity 120ms" }}
                     >
@@ -596,17 +613,20 @@ export default function PreviewViewerPage() {
                   </div>
                 </div>
 
-                <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
-                  <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-white/95 px-4 py-2 shadow-lg">
-                    <button className="btn-ghost px-2" title="이전 쪽" onClick={goPrev}>
-                      ◀
-                    </button>
-                    <PageJumpInput currentPage={currentPage} numPages={numPages} onJump={jumpTo} />
-                    <button className="btn-ghost px-2" title="다음 쪽" onClick={goNext}>
-                      ▶
-                    </button>
-                  </div>
-                </div>
+                <button
+                  className="absolute bottom-4 left-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-slate-600 shadow-lg hover:bg-white"
+                  title="이전 쪽"
+                  onClick={goPrev}
+                >
+                  ◀
+                </button>
+                <button
+                  className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-slate-600 shadow-lg hover:bg-white"
+                  title="다음 쪽"
+                  onClick={goNext}
+                >
+                  ▶
+                </button>
               </>
             )}
           </div>
@@ -626,36 +646,5 @@ export default function PreviewViewerPage() {
         </div>
       </div>
     </AppShell>
-  );
-}
-
-function PageJumpInput({
-  currentPage,
-  numPages,
-  onJump,
-}: {
-  currentPage: number;
-  numPages: number;
-  onJump: (page: number) => void;
-}) {
-  const [value, setValue] = useState("");
-  return (
-    <form
-      className="flex items-center gap-1"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const n = Number(value);
-        if (n >= 1 && n <= numPages) onJump(n);
-        setValue("");
-      }}
-    >
-      <input
-        className="w-12 rounded-lg border border-slate-300 px-2 py-1 text-center text-sm"
-        placeholder={`${currentPage}`}
-        value={value}
-        onChange={(e) => setValue(e.target.value.replace(/[^0-9]/g, ""))}
-      />
-      <span className="text-sm text-slate-500">/ {numPages}쪽</span>
-    </form>
   );
 }

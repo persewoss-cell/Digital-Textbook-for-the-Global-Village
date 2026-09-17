@@ -30,6 +30,7 @@ import { Toolbar, type SearchResult } from "./Toolbar";
 import { TocPanel } from "./TocPanel";
 import { NotesPanel } from "./NotesPanel";
 import { MagnifierOverlay, type MagnifierRect } from "./MagnifierOverlay";
+import { usePinchZoom } from "./usePinchZoom";
 
 const ZOOM_STEP = 0.2;
 const MIN_ZOOM = 0.5;
@@ -110,6 +111,8 @@ export default function TextbookViewerPage() {
   const whiteboardFutureMap = useRef<Map<number, Stroke[][]>>(new Map());
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ w: 900, h: 600 });
   const pageRefs = useRef<Map<number, BookPageHandle>>(new Map());
   const textCache = useRef<Map<number, string>>(new Map());
@@ -186,6 +189,18 @@ export default function TextbookViewerPage() {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  // 태블릿/휴대폰에서 두 손가락으로 꼬집으면 회색 영역 안에서만 교재가 확대/축소된다.
+  // 필기 중이거나 돋보기/화이트보드를 쓰는 중에는 손가락 두 개 입력과 겹치지 않도록 끈다.
+  usePinchZoom({
+    scrollRef,
+    contentRef,
+    zoom,
+    setZoom,
+    minZoom: MIN_ZOOM,
+    maxZoom: MAX_ZOOM,
+    enabled: !whiteboardMode && !magnifierMode && tool === "none",
+  });
 
   // 학생이 다시 들어오면 마지막으로 공부하던 쪽부터 이어서 볼 수 있도록 진도를 한 번만 불러온다.
   useEffect(() => {
@@ -608,6 +623,9 @@ export default function TextbookViewerPage() {
           onEraserSizeChange={setEraserSize}
           onUndo={handleUndo}
           onRedo={handleRedo}
+          currentPage={currentPage}
+          numPages={numPages}
+          onJumpToPage={jumpTo}
           onSearch={handleSearch}
           searchResults={searchResults}
           onJumpToResult={jumpTo}
@@ -660,7 +678,7 @@ export default function TextbookViewerPage() {
               </div>
             ) : (
               <>
-                <div className="absolute inset-0 overflow-auto">
+                <div ref={scrollRef} className="absolute inset-0 overflow-auto">
                   {/* items-center/justify-center로 가운데 정렬하면, 확대해서 내용이 컨테이너보다
                       커졌을 때 브라우저가 넘치는 부분을 좌우/상하로 "똑같이" 넘치게 만드는데,
                       그중 시작(왼쪽/위) 쪽으로 넘친 부분은 스크롤해도 닿지 않는 버그가 있다.
@@ -671,6 +689,7 @@ export default function TextbookViewerPage() {
                       스크롤로 온전히 볼 수 있다. */}
                   <div className="flex min-h-full p-4">
                     <div
+                      ref={contentRef}
                       className="relative m-auto flex shadow-2xl"
                       style={{ gap: PAGE_GAP, opacity: pageOpacity, transition: "opacity 120ms" }}
                     >
@@ -724,17 +743,20 @@ export default function TextbookViewerPage() {
                   </div>
                 </div>
 
-                <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
-                  <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-white/95 px-4 py-2 shadow-lg">
-                    <button className="btn-ghost px-2" title="이전 쪽" onClick={goPrev}>
-                      ◀
-                    </button>
-                    <PageJumpInput currentPage={currentPage} numPages={numPages} onJump={jumpTo} />
-                    <button className="btn-ghost px-2" title="다음 쪽" onClick={goNext}>
-                      ▶
-                    </button>
-                  </div>
-                </div>
+                <button
+                  className="absolute bottom-4 left-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-slate-600 shadow-lg hover:bg-white"
+                  title="이전 쪽"
+                  onClick={goPrev}
+                >
+                  ◀
+                </button>
+                <button
+                  className="absolute bottom-4 right-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-slate-600 shadow-lg hover:bg-white"
+                  title="다음 쪽"
+                  onClick={goNext}
+                >
+                  ▶
+                </button>
               </>
             )}
           </div>
@@ -755,36 +777,5 @@ export default function TextbookViewerPage() {
         </div>
       </div>
     </AppShell>
-  );
-}
-
-function PageJumpInput({
-  currentPage,
-  numPages,
-  onJump,
-}: {
-  currentPage: number;
-  numPages: number;
-  onJump: (page: number) => void;
-}) {
-  const [value, setValue] = useState("");
-  return (
-    <form
-      className="flex items-center gap-1"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const n = Number(value);
-        if (n >= 1 && n <= numPages) onJump(n);
-        setValue("");
-      }}
-    >
-      <input
-        className="w-12 rounded-lg border border-slate-300 px-2 py-1 text-center text-sm"
-        placeholder={`${currentPage}`}
-        value={value}
-        onChange={(e) => setValue(e.target.value.replace(/[^0-9]/g, ""))}
-      />
-      <span className="text-sm text-slate-500">/ {numPages}쪽</span>
-    </form>
   );
 }

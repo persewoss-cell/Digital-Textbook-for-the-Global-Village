@@ -60,6 +60,37 @@ function ColorSwatches({ color, onColorChange }: { color: string; onColorChange:
   );
 }
 
+function PageIndicator({
+  currentPage,
+  numPages,
+  onJump,
+}: {
+  currentPage: number;
+  numPages: number;
+  onJump: (page: number) => void;
+}) {
+  const [value, setValue] = useState("");
+  return (
+    <form
+      className="flex items-center gap-1"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const n = Number(value);
+        if (n >= 1 && n <= numPages) onJump(n);
+        setValue("");
+      }}
+    >
+      <input
+        className="w-12 rounded-lg border border-slate-300 px-2 py-1 text-center text-sm"
+        placeholder={`${currentPage}`}
+        value={value}
+        onChange={(e) => setValue(e.target.value.replace(/[^0-9]/g, ""))}
+      />
+      <span className="text-sm text-slate-500">/ {numPages}쪽</span>
+    </form>
+  );
+}
+
 export function Toolbar({
   viewMode,
   onViewModeChange,
@@ -85,6 +116,9 @@ export function Toolbar({
   whiteboardMode,
   onToggleWhiteboard,
   onClearWhiteboard,
+  currentPage,
+  numPages,
+  onJumpToPage,
   readOnly,
 }: {
   viewMode: "single" | "spread";
@@ -111,6 +145,9 @@ export function Toolbar({
   whiteboardMode: boolean;
   onToggleWhiteboard: () => void;
   onClearWhiteboard: () => void;
+  currentPage: number;
+  numPages: number;
+  onJumpToPage: (page: number) => void;
   readOnly: boolean;
 }) {
   const [query, setQuery] = useState("");
@@ -161,6 +198,10 @@ export function Toolbar({
             ↺100%
           </button>
         )}
+      </div>
+
+      <div className="mx-auto">
+        <PageIndicator currentPage={currentPage} numPages={numPages} onJump={onJumpToPage} />
       </div>
 
       <div className="mx-1 h-5 w-px bg-slate-200" />

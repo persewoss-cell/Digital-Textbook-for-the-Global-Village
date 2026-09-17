@@ -79,6 +79,16 @@ function eraseAtPoint(
   return result;
 }
 
+/** 쪽 번호별 실행취소 기록을 Map에서 가져오거나, 없으면 새로 만들어 등록한다. */
+function getPageHistory(map: Map<number, Stroke[][]>, page: number): Stroke[][] {
+  let arr = map.get(page);
+  if (!arr) {
+    arr = [];
+    map.set(page, arr);
+  }
+  return arr;
+}
+
 export const AnnotationLayer = forwardRef<
   AnnotationLayerHandle,
   {
@@ -92,9 +102,13 @@ export const AnnotationLayer = forwardRef<
     eraserSize: number;
     readOnly: boolean;
     onDraw?: () => void;
+    /** 쪽을 넘겼다가 돌아와도 실행취소 기록이 사라지지 않도록, 쪽 번호별 기록을
+     * 이 컴포넌트보다 오래 사는 부모(TextbookViewerPage)의 Map에 보관한다. */
+    historyMap: Map<number, Stroke[][]>;
+    futureMap: Map<number, Stroke[][]>;
   }
 >(function AnnotationLayer(
-  { uid, textbookId, page, width, height, tool, color, eraserSize, readOnly, onDraw },
+  { uid, textbookId, page, width, height, tool, color, eraserSize, readOnly, onDraw, historyMap, futureMap },
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -104,8 +118,8 @@ export const AnnotationLayer = forwardRef<
   const shapeStart = useRef<[number, number] | null>(null);
   const shapeDraft = useRef<number[] | null>(null);
   const erasingDraft = useRef<Stroke[] | null>(null);
-  const history = useRef<Stroke[][]>([]);
-  const future = useRef<Stroke[][]>([]);
+  const history = useRef<Stroke[][]>(getPageHistory(historyMap, page));
+  const future = useRef<Stroke[][]>(getPageHistory(futureMap, page));
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -113,15 +127,13 @@ export const AnnotationLayer = forwardRef<
   }, [strokes]);
 
   useEffect(() => {
-    history.current = [];
-    future.current = [];
     return watchAnnotation(uid, textbookId, page, (a) => setStrokes(a?.strokes ?? []));
   }, [uid, textbookId, page]);
 
   const commit = (next: Stroke[]) => {
     history.current.push(strokesRef.current);
     if (history.current.length > 50) history.current.shift();
-    future.current = [];
+    future.current.length = 0; // 배열 참조를 유지해야 historyMap/futureMap에 계속 연결된다
     setStrokes(next);
     void saveAnnotation(uid, textbookId, page, next);
     onDraw?.();

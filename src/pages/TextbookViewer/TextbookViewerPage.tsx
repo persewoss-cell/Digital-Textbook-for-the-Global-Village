@@ -14,7 +14,7 @@ import {
 import { extractPageText, extractRealChapters, loadPdf } from "@/lib/pdf";
 import { getRoom, participantKey } from "@/lib/rooms";
 import { isRoomUnlocked, loadParticipantSession, type ParticipantSession } from "@/lib/session";
-import type { AnnotationTool, PlacedNote, RoomDoc, TextbookDoc } from "@/types";
+import type { AnnotationTool, PlacedNote, RoomDoc, Stroke, TextbookDoc } from "@/types";
 import { BookPage, type BookPageHandle } from "./BookPage";
 import { Toolbar, type SearchResult } from "./Toolbar";
 import { TocPanel } from "./TocPanel";
@@ -96,6 +96,9 @@ export default function TextbookViewerPage() {
   const lastDrawnPage = useRef<number | null>(null);
   const textCache = useRef<Map<number, string>>(new Map());
   const progressAppliedRef = useRef<string | null>(null);
+  // 쪽을 넘겼다가 되돌아와도 실행취소 기록이 살아있도록 쪽 번호별로 별도 보관한다.
+  const historyMapRef = useRef<Map<number, Stroke[][]>>(new Map());
+  const futureMapRef = useRef<Map<number, Stroke[][]>>(new Map());
 
   useEffect(() => {
     if (!textbookId) return;
@@ -297,14 +300,14 @@ export default function TextbookViewerPage() {
     setSearchResults(results.slice(0, 30));
   };
 
-  const handleUndo = () => {
-    const target = lastDrawnPage.current ?? primaryPage;
-    pageRefs.current.get(target)?.undo();
+  // 마지막으로 그린 쪽이 화면에서 넘어가 사라진 상태라면(이미 언마운트됨) 실행취소가
+  // 조용히 아무 효과도 없는 것처럼 보이므로, 그럴 땐 현재 보이는 쪽을 대상으로 한다.
+  const undoRedoTarget = () => {
+    const target = lastDrawnPage.current;
+    return target !== null && pageRefs.current.has(target) ? target : primaryPage;
   };
-  const handleRedo = () => {
-    const target = lastDrawnPage.current ?? primaryPage;
-    pageRefs.current.get(target)?.redo();
-  };
+  const handleUndo = () => pageRefs.current.get(undoRedoTarget())?.undo();
+  const handleRedo = () => pageRefs.current.get(undoRedoTarget())?.redo();
 
   const handleMagnifierConfirm = (el: HTMLDivElement) => {
     // 선택한 네모박스가 화면에 꽉 차도록 하는 배율은 현재 줌과 무관하게
@@ -507,6 +510,8 @@ export default function TextbookViewerPage() {
                         onDraw={() => {
                           lastDrawnPage.current = n;
                         }}
+                        historyMap={historyMapRef.current}
+                        futureMap={futureMapRef.current}
                         showNotes
                         noteItems={notesByPage.get(n) ?? []}
                         activeNoteId={n === activeNotePage ? activeNoteId : null}

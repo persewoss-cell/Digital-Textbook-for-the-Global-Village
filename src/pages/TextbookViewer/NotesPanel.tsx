@@ -5,6 +5,12 @@ import type { PlacedNote } from "@/types";
 const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 28;
 
+/** 스크롤 대신 글자 수만큼 textarea 자체의 높이(세로 사각박스 크기)가 늘어나게 한다. */
+function autoResize(el: HTMLTextAreaElement) {
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
+}
+
 export function NotesPanel({
   items,
   activeId,
@@ -32,6 +38,12 @@ export function NotesPanel({
     if (activeId) refs.current.get(activeId)?.focus();
   }, [activeId]);
 
+  // 내가 직접 입력할 때뿐 아니라, 다른 사람(예: 실시간으로 지켜보는 선생님 화면)이 보는
+  // 텍스트 값이 바뀔 때도 사각박스 높이가 항상 내용에 맞게 늘어나 있도록 한다.
+  useEffect(() => {
+    refs.current.forEach((el) => autoResize(el));
+  }, [items]);
+
   return (
     <div className="flex h-full w-72 shrink-0 flex-col border-l border-slate-200 bg-white">
       <div className="border-b border-slate-100 p-4">
@@ -57,15 +69,20 @@ export function NotesPanel({
             >
               <textarea
                 ref={(el) => {
-                  if (el) refs.current.set(note.id, el);
-                  else refs.current.delete(note.id);
+                  if (el) {
+                    refs.current.set(note.id, el);
+                    autoResize(el);
+                  } else refs.current.delete(note.id);
                 }}
-                className="w-full resize-none border-0 bg-transparent text-sm outline-none disabled:text-slate-500"
-                rows={2}
+                className="w-full resize-none overflow-hidden border-0 bg-transparent text-sm outline-none disabled:text-slate-500"
+                rows={1}
                 placeholder="메모를 입력하세요 (Enter로 줄바꿈)"
                 value={note.text}
                 disabled={readOnly}
-                onChange={(e) => onChangeText(note.id, e.target.value)}
+                onChange={(e) => {
+                  autoResize(e.target);
+                  onChangeText(note.id, e.target.value);
+                }}
               />
               {!readOnly && (
                 <div className="mt-1 flex items-center justify-between">

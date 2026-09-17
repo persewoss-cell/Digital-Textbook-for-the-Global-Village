@@ -262,7 +262,14 @@ export default function RoomManagePage() {
   }
 
   return (
-    <AppShell badge={`${room.grade}학년 ${room.classNum}반`}>
+    <AppShell
+      badge={`${room.grade}학년 ${room.classNum}반`}
+      right={
+        <button className="btn-ghost" onClick={() => navigate("/")}>
+          나가기
+        </button>
+      }
+    >
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 flex items-center justify-between">
           <div>

@@ -3,7 +3,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import { PdfPageCanvas } from "./PdfPageCanvas";
 import { AnnotationLayer, type AnnotationLayerHandle } from "./AnnotationLayer";
 import { NotesOverlay } from "./NotesOverlay";
-import type { AnnotationTool, PlacedNote } from "@/types";
+import type { AnnotationTool, PlacedNote, Stroke } from "@/types";
 
 export interface BookPageHandle {
   undo: () => void;
@@ -23,6 +23,8 @@ interface BookPageProps {
   eraserSize: number;
   readOnly: boolean;
   onDraw?: () => void;
+  historyMap: Map<number, Stroke[][]>;
+  futureMap: Map<number, Stroke[][]>;
   showNotes: boolean;
   noteItems: PlacedNote[];
   activeNoteId: string | null;
@@ -44,6 +46,8 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     eraserSize,
     readOnly,
     onDraw,
+    historyMap,
+    futureMap,
     showNotes,
     noteItems,
     activeNoteId,
@@ -98,6 +102,8 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
         eraserSize={eraserSize}
         readOnly={readOnly}
         onDraw={onDraw}
+        historyMap={historyMap}
+        futureMap={futureMap}
       />
       {showNotes && (
         <NotesOverlay

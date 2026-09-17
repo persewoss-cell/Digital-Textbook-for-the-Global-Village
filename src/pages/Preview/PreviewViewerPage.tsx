@@ -135,6 +135,11 @@ export default function PreviewViewerPage() {
     };
   }, [textbookId]);
 
+  // pdf/textbook을 불러오는 동안은 로딩 화면만 그려져서 containerRef가 아직 DOM에
+  // 붙지 않은 상태다. 의존성 배열이 비어 있으면 그 순간(el이 null)에 딱 한 번만 실행되고
+  // 다시는 재실행되지 않아, 느린 네트워크(태블릿 등)에서는 실제 교재 화면이 뜬 뒤에도
+  // 회색 영역 크기를 영영 측정하지 못해 항상 기본값(900x600)으로 계산되는 문제가 있었다.
+  // pdf/textbook이 준비된 시점에 맞춰 재실행되도록 의존성에 넣어 이 경쟁 상태를 없앤다.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -144,14 +149,16 @@ export default function PreviewViewerPage() {
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [pdf, textbook]);
 
+  // 손가락으로 꼬집어 축소해도 회색 영역에 맞춘 기본 크기(100%)보다 작아지지 않도록
+  // 한다(사진 앱처럼 원래 크기 밑으로는 축소되지 않고 확대만 되는 느낌).
   usePinchZoom({
     scrollRef,
     contentRef,
     zoom,
     setZoom,
-    minZoom: MIN_ZOOM,
+    minZoom: 1,
     maxZoom: MAX_ZOOM,
     enabled: !whiteboardMode && !magnifierMode && tool === "none",
   });

@@ -39,15 +39,32 @@ export interface TextbookDoc {
 }
 
 export type DrawTool = "pen" | "colorPen" | "eraser";
-export type ShapeTool = "rectangle" | "circle" | "line";
+export type ShapeTool = "rectangle" | "circle" | "line" | "triangle" | "arrow";
 export type AnnotationTool = DrawTool | ShapeTool | "note" | "none";
 
 export interface Stroke {
   tool: "pen" | "colorPen";
   color: string;
   width: number;
+  alpha?: number; // 0-1, 형광펜처럼 반투명한 느낌을 위한 값. 없으면 1(불투명)
   points: number[]; // flattened [x1,y1,x2,y2,...] in 0-1 normalized page coordinates
 }
+
+/** 색펜을 눌렀을 때 고를 수 있는 펜 종류. 굵기/투명도 조합으로 느낌을 다르게 낸다. */
+export type PenStyleId = "ballpoint" | "highlighter" | "colorPencil" | "marker";
+export interface PenStyleDef {
+  id: PenStyleId;
+  label: string;
+  width: number;
+  alpha: number;
+}
+export const PEN_STYLES: PenStyleDef[] = [
+  { id: "ballpoint", label: "볼펜", width: 2.5, alpha: 1 },
+  { id: "marker", label: "사인펜", width: 5, alpha: 1 },
+  { id: "colorPencil", label: "색연필", width: 3.5, alpha: 0.8 },
+  { id: "highlighter", label: "형광펜", width: 14, alpha: 0.35 },
+];
+export const DEFAULT_PEN_STYLE: PenStyleId = "ballpoint";
 
 export interface PlacedNote {
   id: string;

@@ -14,7 +14,16 @@ import {
 import { extractPageText, extractRealChapters, loadPdf } from "@/lib/pdf";
 import { getRoom, participantKey } from "@/lib/rooms";
 import { isRoomUnlocked, loadParticipantSession, type ParticipantSession } from "@/lib/session";
-import type { AnnotationTool, PlacedNote, RoomDoc, Stroke, TextbookDoc } from "@/types";
+import {
+  DEFAULT_PEN_STYLE,
+  PEN_STYLES,
+  type AnnotationTool,
+  type PenStyleId,
+  type PlacedNote,
+  type RoomDoc,
+  type Stroke,
+  type TextbookDoc,
+} from "@/types";
 import { BookPage, type BookPageHandle } from "./BookPage";
 import { AnnotationLayer, type AnnotationLayerHandle } from "./AnnotationLayer";
 import { Toolbar, type SearchResult } from "./Toolbar";
@@ -28,6 +37,7 @@ const MAX_ZOOM = 4;
 const PAGE_GAP = 10;
 const CONTAINER_PADDING = 16;
 const BOTTOM_BAR_SPACE = 64;
+const FIT_SAFETY_MARGIN = 12;
 
 // 표지(1쪽)는 혼자 오른쪽에 보이고, 2쪽부터 (2,3) (4,5) (6,7)... 순서로 짝을 이룬다.
 const spreadStart = (n: number) => (n <= 1 ? 1 : n % 2 === 0 ? n : n - 1);
@@ -80,6 +90,8 @@ export default function TextbookViewerPage() {
   const [zoom, setZoom] = useState(1);
   const [tool, setTool] = useState<AnnotationTool>("none");
   const [color, setColor] = useState("#ef4444");
+  const [penStyleId, setPenStyleId] = useState<PenStyleId>(DEFAULT_PEN_STYLE);
+  const activePenStyle = PEN_STYLES.find((p) => p.id === penStyleId) ?? PEN_STYLES[0];
   const [eraserSize, setEraserSize] = useState(10);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
@@ -281,8 +293,13 @@ export default function TextbookViewerPage() {
 
   const boxWidth = useMemo(() => {
     const pageCount = layoutPageCount;
-    const availW = Math.max(100, containerSize.w - CONTAINER_PADDING * 2 - PAGE_GAP * (pageCount - 1));
-    const availH = Math.max(100, containerSize.h - CONTAINER_PADDING * 2 - BOTTOM_BAR_SPACE);
+    // 태블릿 등에서 소수점/스크롤바 폭 오차로 실제 크기가 회색 영역보다 살짝 커져
+    // 스크롤바가 생기는 일이 없도록 여유를 조금 더 뺀다.
+    const availW = Math.max(
+      100,
+      containerSize.w - CONTAINER_PADDING * 2 - PAGE_GAP * (pageCount - 1) - FIT_SAFETY_MARGIN,
+    );
+    const availH = Math.max(100, containerSize.h - CONTAINER_PADDING * 2 - BOTTOM_BAR_SPACE - FIT_SAFETY_MARGIN);
     const perPageMaxW = availW / pageCount;
     const widthFromHeight = availH / aspect;
     const fit = Math.min(perPageMaxW, widthFromHeight);
@@ -585,6 +602,8 @@ export default function TextbookViewerPage() {
           onToolChange={setTool}
           color={color}
           onColorChange={setColor}
+          penStyleId={penStyleId}
+          onPenStyleChange={setPenStyleId}
           eraserSize={eraserSize}
           onEraserSizeChange={setEraserSize}
           onUndo={handleUndo}
@@ -634,6 +653,8 @@ export default function TextbookViewerPage() {
                     historyMap={whiteboardHistoryMap.current}
                     futureMap={whiteboardFutureMap.current}
                     persist={false}
+                    penWidth={activePenStyle.width}
+                    penAlpha={activePenStyle.alpha}
                   />
                 </div>
               </div>
@@ -678,6 +699,8 @@ export default function TextbookViewerPage() {
                             }}
                             historyMap={historyMapRef.current}
                             futureMap={futureMapRef.current}
+                            penWidth={activePenStyle.width}
+                            penAlpha={activePenStyle.alpha}
                             showNotes
                             noteItems={notesByPage.get(n) ?? []}
                             activeNoteId={n === activeNotePage ? activeNoteId : null}

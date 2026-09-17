@@ -29,6 +29,8 @@ interface BookPageProps {
   futureMap: Map<number, Stroke[][]>;
   /** false면 필기를 서버에 저장/조회하지 않는다 (교재 체험 모드용). */
   persist?: boolean;
+  penWidth?: number;
+  penAlpha?: number;
   showNotes: boolean;
   noteItems: PlacedNote[];
   activeNoteId: string | null;
@@ -53,6 +55,8 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     historyMap,
     futureMap,
     persist,
+    penWidth,
+    penAlpha,
     showNotes,
     noteItems,
     activeNoteId,
@@ -123,6 +127,8 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
         historyMap={historyMap}
         futureMap={futureMap}
         persist={persist}
+        penWidth={penWidth}
+        penAlpha={penAlpha}
       />
       {showNotes && (
         <NotesOverlay

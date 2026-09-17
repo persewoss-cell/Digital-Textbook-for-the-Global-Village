@@ -2,16 +2,49 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import { saveAnnotation, watchAnnotation } from "@/lib/firestore";
 import type { DrawTool, ShapeTool, Stroke } from "@/types";
 
-const SHAPE_TOOLS: ShapeTool[] = ["rectangle", "circle", "line"];
+export const SHAPE_TOOLS: ShapeTool[] = ["line", "arrow", "rectangle", "triangle", "circle"];
 const isShapeTool = (t: DrawTool | ShapeTool | "none"): t is ShapeTool =>
   (SHAPE_TOOLS as string[]).includes(t);
 
-/** 시작점과 끝점(0-1 정규화 좌표)으로 도형의 외곽선 점 배열을 만든다. */
-function buildShapePoints(kind: ShapeTool, start: [number, number], end: [number, number]): number[] {
+/** 시작점과 끝점(0-1 정규화 좌표)으로 도형의 외곽선 점 배열을 만든다.
+ * 정규화 좌표는 가로/세로 비율이 다르므로(교재 쪽은 정사각형이 아님), 화살촉처럼
+ * 각도가 중요한 도형은 실제 캔버스 픽셀 비율(canvasW/canvasH)로 잠깐 환산해서
+ * 계산한 뒤 다시 정규화 좌표로 되돌려야 비율이 비뚤어지지 않는다. */
+function buildShapePoints(
+  kind: ShapeTool,
+  start: [number, number],
+  end: [number, number],
+  canvasW: number,
+  canvasH: number,
+): number[] {
   const [sx, sy] = start;
   const [ex, ey] = end;
   if (kind === "line") return [sx, sy, ex, ey];
   if (kind === "rectangle") return [sx, sy, ex, sy, ex, ey, sx, ey, sx, sy];
+  if (kind === "triangle") {
+    const topMidX = (sx + ex) / 2;
+    return [topMidX, sy, ex, ey, sx, ey, topMidX, sy];
+  }
+  if (kind === "arrow") {
+    const dxPix = (ex - sx) * canvasW;
+    const dyPix = (ey - sy) * canvasH;
+    const len = Math.hypot(dxPix, dyPix) || 1;
+    const backX = -dxPix / len;
+    const backY = -dyPix / len;
+    const headLenPix = Math.min(len * 0.35, canvasW * 0.06);
+    const angle = (28 * Math.PI) / 180;
+    const rotate = (vx: number, vy: number, a: number): [number, number] => [
+      vx * Math.cos(a) - vy * Math.sin(a),
+      vx * Math.sin(a) + vy * Math.cos(a),
+    ];
+    const [w1x, w1y] = rotate(backX, backY, angle);
+    const [w2x, w2y] = rotate(backX, backY, -angle);
+    const wing1x = ex + (w1x * headLenPix) / canvasW;
+    const wing1y = ey + (w1y * headLenPix) / canvasH;
+    const wing2x = ex + (w2x * headLenPix) / canvasW;
+    const wing2y = ey + (w2y * headLenPix) / canvasH;
+    return [sx, sy, ex, ey, wing1x, wing1y, ex, ey, wing2x, wing2y];
+  }
   // circle/ellipse: start~end 사이 사각형에 내접하는 타원
   const cx = (sx + ex) / 2;
   const cy = (sy + ey) / 2;
@@ -49,7 +82,7 @@ export function drawStroke(
 ) {
   if (stroke.points.length < 4) return;
   ctx.strokeStyle = stroke.tool === "pen" ? PENCIL_COLOR : stroke.color;
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = stroke.alpha ?? 1;
   ctx.lineWidth = stroke.width * widthScale;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -120,6 +153,9 @@ export const AnnotationLayer = forwardRef<
     futureMap: Map<number, Stroke[][]>;
     /** false면 서버에서 불러오거나 저장하지 않고 화면에서만 그려진다 (교재 체험 모드용). */
     persist?: boolean;
+    /** 색펜(볼펜/형광펜/색연필/사인펜)의 굵기·투명도. 도형/연필에는 영향을 주지 않는다. */
+    penWidth?: number;
+    penAlpha?: number;
   }
 >(function AnnotationLayer(
   {
@@ -136,6 +172,8 @@ export const AnnotationLayer = forwardRef<
     historyMap,
     futureMap,
     persist = true,
+    penWidth = 2.5,
+    penAlpha = 1,
   },
   ref,
 ) {
@@ -223,7 +261,8 @@ export const AnnotationLayer = forwardRef<
     ];
   };
 
-  const strokeWidth = tool === "colorPen" || isShapeTool(tool) ? 2.5 : 2;
+  const strokeWidth = tool === "colorPen" ? penWidth : isShapeTool(tool) ? 2.5 : 2;
+  const strokeAlpha = tool === "colorPen" ? penAlpha : 1;
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (readOnly || tool === "none") return;
@@ -258,15 +297,27 @@ export const AnnotationLayer = forwardRef<
     if (isShapeTool(tool) && shapeStart.current) {
       const [x, y] = toLocal(e.clientX, e.clientY);
       const canvas = canvasRef.current!;
-      const points = buildShapePoints(tool, shapeStart.current, [x / canvas.width, y / canvas.height]);
+      const points = buildShapePoints(
+        tool,
+        shapeStart.current,
+        [x / canvas.width, y / canvas.height],
+        canvas.width,
+        canvas.height,
+      );
       shapeDraft.current = points;
-      redraw(strokes, { tool: "colorPen", color, width: strokeWidth, points });
+      redraw(strokes, { tool: "colorPen", color, width: strokeWidth, alpha: 1, points });
       return;
     }
     if (!drawing.current) return;
     const [x, y] = toLocal(e.clientX, e.clientY);
     drawing.current.push(x / canvasRef.current!.width, y / canvasRef.current!.height);
-    redraw(strokes, { tool: tool as "pen" | "colorPen", color, width: strokeWidth, points: drawing.current });
+    redraw(strokes, {
+      tool: tool as "pen" | "colorPen",
+      color,
+      width: strokeWidth,
+      alpha: strokeAlpha,
+      points: drawing.current,
+    });
   };
 
   const handlePointerUp = () => {
@@ -283,14 +334,14 @@ export const AnnotationLayer = forwardRef<
       shapeStart.current = null;
       shapeDraft.current = null;
       if (!points || points.length < 4) return;
-      commit([...strokes, { tool: "colorPen", color, width: strokeWidth, points }]);
+      commit([...strokes, { tool: "colorPen", color, width: strokeWidth, alpha: 1, points }]);
       return;
     }
     if (!drawing.current) return;
     const points = drawing.current;
     drawing.current = null;
     if (points.length < 4) return; // ignore accidental taps
-    commit([...strokes, { tool: tool as "pen" | "colorPen", color, width: strokeWidth, points }]);
+    commit([...strokes, { tool: tool as "pen" | "colorPen", color, width: strokeWidth, alpha: strokeAlpha, points }]);
   };
 
   const interactive = !readOnly && tool !== "none";

@@ -4,7 +4,15 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import { AppShell } from "@/components/AppShell";
 import { getTextbook, updateTextbookChapters } from "@/lib/firestore";
 import { extractPageText, extractRealChapters, loadPdf } from "@/lib/pdf";
-import type { AnnotationTool, PlacedNote, Stroke, TextbookDoc } from "@/types";
+import {
+  DEFAULT_PEN_STYLE,
+  PEN_STYLES,
+  type AnnotationTool,
+  type PenStyleId,
+  type PlacedNote,
+  type Stroke,
+  type TextbookDoc,
+} from "@/types";
 import { BookPage, type BookPageHandle } from "@/pages/TextbookViewer/BookPage";
 import { AnnotationLayer, type AnnotationLayerHandle } from "@/pages/TextbookViewer/AnnotationLayer";
 import { Toolbar, type SearchResult } from "@/pages/TextbookViewer/Toolbar";
@@ -17,6 +25,7 @@ const MAX_ZOOM = 4;
 const PAGE_GAP = 10;
 const CONTAINER_PADDING = 16;
 const BOTTOM_BAR_SPACE = 64;
+const FIT_SAFETY_MARGIN = 12;
 
 // 체험 모드는 방/학생 계정이 없으므로 uid는 저장에 쓰이지 않는 자리표시자일 뿐이다.
 const PREVIEW_UID = "preview";
@@ -45,6 +54,8 @@ export default function PreviewViewerPage() {
   const [zoom, setZoom] = useState(1);
   const [tool, setTool] = useState<AnnotationTool>("none");
   const [color, setColor] = useState("#ef4444");
+  const [penStyleId, setPenStyleId] = useState<PenStyleId>(DEFAULT_PEN_STYLE);
+  const activePenStyle = PEN_STYLES.find((p) => p.id === penStyleId) ?? PEN_STYLES[0];
   const [eraserSize, setEraserSize] = useState(10);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
@@ -185,8 +196,11 @@ export default function PreviewViewerPage() {
 
   const boxWidth = useMemo(() => {
     const pageCount = layoutPageCount;
-    const availW = Math.max(100, containerSize.w - CONTAINER_PADDING * 2 - PAGE_GAP * (pageCount - 1));
-    const availH = Math.max(100, containerSize.h - CONTAINER_PADDING * 2 - BOTTOM_BAR_SPACE);
+    const availW = Math.max(
+      100,
+      containerSize.w - CONTAINER_PADDING * 2 - PAGE_GAP * (pageCount - 1) - FIT_SAFETY_MARGIN,
+    );
+    const availH = Math.max(100, containerSize.h - CONTAINER_PADDING * 2 - BOTTOM_BAR_SPACE - FIT_SAFETY_MARGIN);
     const perPageMaxW = availW / pageCount;
     const widthFromHeight = availH / aspect;
     const fit = Math.min(perPageMaxW, widthFromHeight);
@@ -467,6 +481,8 @@ export default function PreviewViewerPage() {
           onToolChange={setTool}
           color={color}
           onColorChange={setColor}
+          penStyleId={penStyleId}
+          onPenStyleChange={setPenStyleId}
           eraserSize={eraserSize}
           onEraserSizeChange={setEraserSize}
           onUndo={handleUndo}
@@ -516,6 +532,8 @@ export default function PreviewViewerPage() {
                     historyMap={whiteboardHistoryMap.current}
                     futureMap={whiteboardFutureMap.current}
                     persist={false}
+                    penWidth={activePenStyle.width}
+                    penAlpha={activePenStyle.alpha}
                   />
                 </div>
               </div>
@@ -553,6 +571,8 @@ export default function PreviewViewerPage() {
                             historyMap={historyMapRef.current}
                             futureMap={futureMapRef.current}
                             persist={false}
+                            penWidth={activePenStyle.width}
+                            penAlpha={activePenStyle.alpha}
                             showNotes
                             noteItems={notesByPage.get(n) ?? []}
                             activeNoteId={n === activeNotePage ? activeNoteId : null}

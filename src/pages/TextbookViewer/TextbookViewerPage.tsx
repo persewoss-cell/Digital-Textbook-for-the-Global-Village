@@ -31,6 +31,7 @@ import { TocPanel } from "./TocPanel";
 import { NotesPanel } from "./NotesPanel";
 import { MagnifierOverlay, type MagnifierRect } from "./MagnifierOverlay";
 import { usePinchZoom } from "./usePinchZoom";
+import type { ActivityZone } from "./activityZones";
 
 const ZOOM_STEP = 0.2;
 const MIN_ZOOM = 0.5;
@@ -497,21 +498,31 @@ export default function TextbookViewerPage() {
     lastUndoneType.current = null;
   };
 
-  const handleMagnifierConfirm = (el: HTMLDivElement) => {
-    // 선택한 네모박스가 화면에 꽉 차도록 하는 배율은 현재 줌과 무관하게
-    // "1 / 선택 영역의 비율"이어야 한다 (현재 줌을 또 곱하면 과도하게 확대됨).
-    const targetZoom = Math.min(MAX_ZOOM, 1 / Math.max(magnifierRect.fw, magnifierRect.fh));
+  // 사각형 영역(0-1 정규화 비율)이 화면에 최대한 꽉 차도록 확대하고 그 위치로 스크롤한다.
+  // 돋보기로 직접 그린 영역과, 활동 단계(준비하기/활동하기 등) 라벨을 눌러 자동으로
+  // 잡은 영역 모두 이 함수를 공유해서 쓴다.
+  const zoomToRect = (w: number, h: number, el: HTMLElement) => {
+    // 이 영역이 화면에 꽉 차도록 하는 배율은 현재 줌과 무관하게 "1 / 영역의 비율"이어야
+    // 한다 (현재 줌을 또 곱하면 과도하게 확대됨).
+    const targetZoom = Math.min(MAX_ZOOM, 1 / Math.max(w, h));
     setZoom(targetZoom);
     // 확대로 인해 레이아웃 크기가 바뀐 뒤(2프레임 대기) 정확한 위치로 스크롤한다.
     // behavior:"smooth"로 스크롤을 시작한 채 바로 오버레이를 없애면 애니메이션이
-    // 중간에 끊겨 위치가 살짝 어긋나 보이므로, 즉시 이동(auto)으로 스크롤을 끝낸
-    // 뒤에만 오버레이를 닫는다.
+    // 중간에 끊겨 위치가 살짝 어긋나 보이므로, 즉시 이동(auto)으로 스크롤을 끝낸다.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
-        setMagnifierMode(false);
       });
     });
+  };
+
+  const handleMagnifierConfirm = (el: HTMLDivElement) => {
+    zoomToRect(magnifierRect.fw, magnifierRect.fh, el);
+    setMagnifierMode(false);
+  };
+
+  const handleActivateZone = (zone: ActivityZone, el: HTMLDivElement) => {
+    zoomToRect(zone.w, zone.h, el);
   };
 
   const handleCapture = () => {
@@ -779,6 +790,7 @@ export default function TextbookViewerPage() {
                             onCreateNote={(x, y) => handleCreateNote(n, x, y)}
                             onSelectNote={(id) => handleSelectNote(n, id)}
                             onMoveNote={(id, x, y) => handleMoveNote(n, id, x, y)}
+                            onActivateZone={handleActivateZone}
                           />
                         </div>
                       ))}

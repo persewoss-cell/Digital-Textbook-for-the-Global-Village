@@ -5,6 +5,11 @@ import { AnnotationLayer, type AnnotationLayerHandle } from "./AnnotationLayer";
 import { NotesOverlay } from "./NotesOverlay";
 import { PageLinkOverlay } from "./PageLinkOverlay";
 import { detectPageLinks, type PageLink } from "./pageLinks";
+import { ActivityZoneOverlay } from "./ActivityZoneOverlay";
+import { detectActivityZones, type ActivityZone } from "./activityZones";
+import { ImageZoneOverlay } from "./ImageZoneOverlay";
+import { detectPageImages, type ImageRegion } from "./pageImages";
+import { MediaPopup } from "./MediaPopup";
 import type { AnnotationTool, PlacedNote, Stroke } from "@/types";
 
 export interface BookPageHandle {
@@ -41,6 +46,7 @@ interface BookPageProps {
   onCreateNote: (x: number, y: number) => void;
   onSelectNote: (id: string) => void;
   onMoveNote: (id: string, x: number, y: number) => void;
+  onActivateZone: (zone: ActivityZone, el: HTMLDivElement) => void;
 }
 
 export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookPage(
@@ -68,6 +74,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     onCreateNote,
     onSelectNote,
     onMoveNote,
+    onActivateZone,
   },
   ref,
 ) {
@@ -75,6 +82,13 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
   const annotationRef = useRef<AnnotationLayerHandle>(null);
   const [links, setLinks] = useState<PageLink[]>([]);
   const linkDetectSeq = useRef(0);
+  const [zones, setZones] = useState<ActivityZone[]>([]);
+  const zoneDetectSeq = useRef(0);
+  const [images, setImages] = useState<ImageRegion[]>([]);
+  const imageDetectSeq = useRef(0);
+  const [popup, setPopup] = useState<{ type: "image"; dataUrl: string } | { type: "video"; embedUrl: string } | null>(
+    null,
+  );
 
   useImperativeHandle(
     ref,
@@ -100,6 +114,24 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
 
   const drawTool = tool === "note" ? "none" : tool;
 
+  const handleActivateImage = (region: ImageRegion) => {
+    const canvas = pdfCanvasRef.current;
+    if (!canvas) return;
+    const sx = region.x * canvas.width;
+    const sy = region.y * canvas.height;
+    const sw = region.w * canvas.width;
+    const sh = region.h * canvas.height;
+    const out = document.createElement("canvas");
+    out.width = sw;
+    out.height = sh;
+    const ctx = out.getContext("2d");
+    if (!ctx) return;
+    // 이미 화면에 렌더링된(최대 해상도) 캔버스에서 해당 영역만 그대로 잘라내므로,
+    // PDF 이미지를 색공간/디코딩까지 다시 처리할 필요 없이 화질 그대로 크게 보여줄 수 있다.
+    ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+    setPopup({ type: "image", dataUrl: out.toDataURL("image/png") });
+  };
+
   return (
     <div
       className="relative overflow-hidden bg-white shadow-inner"
@@ -115,6 +147,14 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
           const seq = ++linkDetectSeq.current;
           detectPageLinks(pdf, pageNumber, pdfCanvasRef.current).then((found) => {
             if (linkDetectSeq.current === seq) setLinks(found);
+          });
+          const zseq = ++zoneDetectSeq.current;
+          detectActivityZones(pdf, pageNumber).then((found) => {
+            if (zoneDetectSeq.current === zseq) setZones(found);
+          });
+          const iseq = ++imageDetectSeq.current;
+          detectPageImages(pdf, pageNumber, pdfCanvasRef.current).then((found) => {
+            if (imageDetectSeq.current === iseq) setImages(found);
           });
         }}
       />
@@ -148,7 +188,28 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
           onMove={onMoveNote}
         />
       )}
-      <PageLinkOverlay links={links} interactive={tool === "none"} />
+      <ActivityZoneOverlay zones={zones} interactive={tool === "none"} onActivate={onActivateZone} />
+      <ImageZoneOverlay regions={images} interactive={tool === "none"} onActivate={handleActivateImage} />
+      <PageLinkOverlay
+        links={links}
+        interactive={tool === "none"}
+        onOpenVideo={(embedUrl) => setPopup({ type: "video", embedUrl })}
+      />
+      {popup?.type === "image" && (
+        <MediaPopup onClose={() => setPopup(null)}>
+          <img src={popup.dataUrl} className="max-h-[90vh] max-w-[90vw] rounded-lg shadow-2xl" alt="" />
+        </MediaPopup>
+      )}
+      {popup?.type === "video" && (
+        <MediaPopup onClose={() => setPopup(null)}>
+          <iframe
+            src={popup.embedUrl}
+            className="aspect-video w-[85vw] max-w-3xl rounded-lg bg-black shadow-2xl"
+            allow="autoplay; encrypted-media; picture-in-picture"
+            allowFullScreen
+          />
+        </MediaPopup>
+      )}
     </div>
   );
 });

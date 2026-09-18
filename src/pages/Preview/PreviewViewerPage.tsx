@@ -20,6 +20,7 @@ import { TocPanel } from "@/pages/TextbookViewer/TocPanel";
 import { NotesPanel } from "@/pages/TextbookViewer/NotesPanel";
 import { MagnifierOverlay, type MagnifierRect } from "@/pages/TextbookViewer/MagnifierOverlay";
 import { usePinchZoom } from "@/pages/TextbookViewer/usePinchZoom";
+import type { ActivityZone } from "@/pages/TextbookViewer/activityZones";
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
@@ -387,15 +388,23 @@ export default function PreviewViewerPage() {
     lastUndoneType.current = null;
   };
 
-  const handleMagnifierConfirm = (el: HTMLDivElement) => {
-    const targetZoom = Math.min(MAX_ZOOM, 1 / Math.max(magnifierRect.fw, magnifierRect.fh));
+  const zoomToRect = (w: number, h: number, el: HTMLElement) => {
+    const targetZoom = Math.min(MAX_ZOOM, 1 / Math.max(w, h));
     setZoom(targetZoom);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
-        setMagnifierMode(false);
       });
     });
+  };
+
+  const handleMagnifierConfirm = (el: HTMLDivElement) => {
+    zoomToRect(magnifierRect.fw, magnifierRect.fh, el);
+    setMagnifierMode(false);
+  };
+
+  const handleActivateZone = (zone: ActivityZone, el: HTMLDivElement) => {
+    zoomToRect(zone.w, zone.h, el);
   };
 
   const handleCapture = () => {
@@ -644,6 +653,7 @@ export default function PreviewViewerPage() {
                             onCreateNote={(x, y) => handleCreateNote(n, x, y)}
                             onSelectNote={(id) => handleSelectNote(n, id)}
                             onMoveNote={(id, x, y) => handleMoveNote(n, id, x, y)}
+                            onActivateZone={handleActivateZone}
                           />
                         </div>
                       ))}

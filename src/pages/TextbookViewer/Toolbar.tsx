@@ -141,19 +141,6 @@ export function Toolbar({
       >
         📚 목차
       </button>
-      <button
-        className={`btn-ghost px-2 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
-        title="노트창 보이기/숨기기"
-        onClick={onToggleNotes}
-      >
-        📝 노트
-      </button>
-
-      <div className="mx-1 h-5 w-px bg-slate-200" />
-
-      <div className="mx-auto text-sm font-semibold text-slate-600">
-        {currentPage} / {numPages}쪽
-      </div>
 
       <div className="mx-1 h-5 w-px bg-slate-200" />
 
@@ -174,6 +161,10 @@ export function Toolbar({
           한쪽
         </button>
       </div>
+
+      <span className="text-sm font-semibold text-slate-600">
+        {currentPage} / {numPages}쪽
+      </span>
 
       {/* zoom */}
       <div className="flex items-center gap-1">
@@ -198,8 +189,19 @@ export function Toolbar({
         )}
       </div>
 
+      <div className="mx-1 h-5 w-px bg-slate-200" />
+
+      <button
+        className={`btn-ghost px-2 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
+        title="노트창 보이기/숨기기"
+        onClick={onToggleNotes}
+      >
+        📝 노트
+      </button>
+
       {!readOnly && (
         <>
+          <div className="mx-1 h-5 w-px bg-slate-200" />
           {/* annotation tools */}
           <div className="flex items-center gap-1">
             <button

@@ -135,7 +135,7 @@ function ParticipantThumbCard({
       <div className="relative flex items-center justify-center bg-slate-100 py-2">
         {pdf ? (
           <div className="relative">
-            <PdfPageCanvas pdf={pdf} pageNumber={page} width={thumbWidth} />
+            <PdfPageCanvas pdf={pdf} pageNumber={page} renderWidth={thumbWidth} displayWidth={thumbWidth} />
             <ThumbStrokes
               roomId={roomId}
               studentNum={participant.studentNum}

@@ -239,7 +239,12 @@ export default function PreviewViewerPage() {
     noteEditSession.current = { page, preState, timer };
   };
 
-  const boxWidth = useMemo(() => {
+  // fitWidth는 줌과 무관하게 "회색 영역에 꼭 맞는 기본 크기"다. 실제 보여줄 크기
+  // (boxWidth)는 여기에 zoom을 곱한 값이고, PdfPageCanvas가 한 번 그려 둘 최대
+  // 해상도 기준(maxBoxWidth)은 zoom이 가장 커질 수 있는 값(MAX_ZOOM)을 곱한 값이다
+  // — 줌이 바뀔 때마다 다시 그릴 필요 없이 항상 이미 그려 둔 것을 CSS로 늘리거나
+  // 줄이기만 하면 되므로, 손가락으로 확대·축소해도 매끄럽고 화질도 처음부터 최상이다.
+  const fitWidth = useMemo(() => {
     const pageCount = layoutPageCount;
     const availW = Math.max(
       100,
@@ -248,9 +253,10 @@ export default function PreviewViewerPage() {
     const availH = Math.max(100, containerSize.h - CONTAINER_PADDING * 2 - FIT_SAFETY_MARGIN);
     const perPageMaxW = availW / pageCount;
     const widthFromHeight = availH / aspect;
-    const fit = Math.min(perPageMaxW, widthFromHeight);
-    return Math.max(120, fit * zoom);
-  }, [containerSize, aspect, layoutPageCount, zoom]);
+    return Math.max(120, Math.min(perPageMaxW, widthFromHeight));
+  }, [containerSize, aspect, layoutPageCount]);
+  const boxWidth = fitWidth * zoom;
+  const maxBoxWidth = fitWidth * MAX_ZOOM;
   const boxHeight = boxWidth * aspect;
   const spreadWidth = boxWidth * layoutPageCount + PAGE_GAP * (layoutPageCount - 1);
 
@@ -617,6 +623,7 @@ export default function PreviewViewerPage() {
                             pageNumber={n}
                             boxWidth={boxWidth}
                             boxHeight={boxHeight}
+                            maxBoxWidth={maxBoxWidth}
                             uid={PREVIEW_UID}
                             textbookId={textbookId!}
                             tool={tool}

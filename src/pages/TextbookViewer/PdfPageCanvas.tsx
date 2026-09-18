@@ -25,13 +25,28 @@ export const PdfPageCanvas = forwardRef<
   {
     pdf: PDFDocumentProxy;
     pageNumber: number;
-    width: number;
+    /** 실제로 캔버스에 그려 넣을 해상도 기준 너비. 확대(zoom)와 무관하게 "이 쪽이
+     * 화면에 가장 커질 수 있는 크기"로 한 번만 잡아 두면, 그보다 작게 보여줄 때는
+     * (아래 displayWidth) 이미 그려진 내용을 CSS로 줄여서 보여주기만 하면 되므로
+     * 손가락으로 확대·축소할 때마다 PDF를 다시 그릴 필요가 없다. */
+    renderWidth: number;
+    /** 지금 화면에 실제로 보여줄 CSS 너비(줌에 따라 계속 바뀐다). 이 값이 바뀌어도
+     * 캔버스를 다시 그리지 않고 CSS 크기만 바뀌므로 즉각적이고 매끄럽다. */
+    displayWidth: number;
     onSize?: (w: number, h: number) => void;
   }
->(function PdfPageCanvas({ pdf, pageNumber, width, onSize }, ref) {
+>(function PdfPageCanvas({ pdf, pageNumber, renderWidth, displayWidth, onSize }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useImperativeHandle(ref, () => canvasRef.current!, []);
   const dpr = Math.min(useDevicePixelRatio(), 4);
+  // 쪽의 가로세로 비율(높이/너비). 쪽 번호가 같으면 안 바뀌므로, displayWidth가
+  // 바뀔 때마다(줌) 다시 계산할 필요 없이 한 번만 구해서 재사용한다.
+  const [aspect, setAspect] = useState(1.41);
+  // onSize 호출 시점(실제로 다시 그려졌을 때)의 최신 displayWidth를 읽기 위한 ref.
+  // 의존성 배열에 displayWidth를 넣으면 줌이 바뀔 때마다 이 effect가 다시 실행돼
+  // 버리므로(그러면 또 렌더링을 하게 됨), ref로 우회한다.
+  const displayWidthRef = useRef(displayWidth);
+  displayWidthRef.current = displayWidth;
 
   useEffect(() => {
     let cancelled = false;
@@ -40,8 +55,8 @@ export const PdfPageCanvas = forwardRef<
       const page = await pdf.getPage(pageNumber);
       if (cancelled) return;
       const base = page.getViewport({ scale: 1 });
-      const cssHeight = (width * base.height) / base.width;
-      let scale = (width / base.width) * dpr;
+      if (!cancelled) setAspect(base.height / base.width);
+      let scale = (renderWidth / base.width) * dpr;
       let viewport = page.getViewport({ scale });
       const largestSide = Math.max(viewport.width, viewport.height);
       if (largestSide > MAX_CANVAS_DIMENSION) {
@@ -52,16 +67,14 @@ export const PdfPageCanvas = forwardRef<
       if (!canvas) return;
       canvas.width = viewport.width;
       canvas.height = viewport.height;
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${cssHeight}px`;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      // 렌더링 도중(예: 레이아웃이 다시 계산돼 width가 또 바뀌는 경우) 이 effect가
-      // 다시 실행되면, 이전 렌더링이 끝나기 전에 같은 캔버스에 새 렌더링을 또 시작하게
-      // 되어 pdf.js가 "Cannot use the same canvas during multiple render() operations"
-      // 오류를 내며 캔버스가 반쯤 그려진(뒤집혀 보이는 등 이상한) 상태로 남는 문제가
-      // 있었다. 진행 중인 렌더링을 렌더 태스크로 잡아 두었다가, 새로 시작하기 전이나
-      // 이 effect가 정리될 때 확실히 취소한다.
+      // 렌더링 도중(예: 레이아웃이 다시 계산돼 renderWidth가 또 바뀌는 경우) 이
+      // effect가 다시 실행되면, 이전 렌더링이 끝나기 전에 같은 캔버스에 새 렌더링을
+      // 또 시작하게 되어 pdf.js가 "Cannot use the same canvas during multiple
+      // render() operations" 오류를 내며 캔버스가 반쯤 그려진(뒤집혀 보이는 등
+      // 이상한) 상태로 남는 문제가 있었다. 진행 중인 렌더링을 렌더 태스크로 잡아
+      // 두었다가, 새로 시작하기 전이나 이 effect가 정리될 때 확실히 취소한다.
       try {
         const task = page.render({ canvasContext: ctx, viewport });
         renderTask = task;
@@ -70,14 +83,26 @@ export const PdfPageCanvas = forwardRef<
         if (cancelled) return; // 우리가 취소해서 난 에러는 무시
         throw err;
       }
-      if (!cancelled) onSize?.(width, cssHeight);
+      // onSize는 QR코드/링크 감지처럼 "실제로 다시 그려진 캔버스 픽셀"을 다시 읽어야
+      // 하는 무거운 작업의 트리거로 쓰인다. displayWidth(줌)가 바뀔 때마다 부르면
+      // 손가락으로 확대·축소할 때마다 그 무거운 작업이 또 실행돼 버벅이므로, 실제로
+      // 새로 그려졌을 때(이 effect가 실행됐을 때)만 한 번 부른다.
+      if (!cancelled) onSize?.(displayWidthRef.current, displayWidthRef.current * (base.height / base.width));
     })();
     return () => {
       cancelled = true;
       renderTask?.cancel();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdf, pageNumber, width, dpr]);
+  }, [pdf, pageNumber, renderWidth, dpr]);
 
-  return <canvas ref={canvasRef} className="block select-none" />;
+  const displayHeight = displayWidth * aspect;
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="block select-none"
+      style={{ width: displayWidth, height: displayHeight }}
+    />
+  );
 });

@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 interface PinchState {
   startDistance: number;
   startZoom: number;
-  liveZoom: number; // 손가락을 움직이는 동안 계속 갱신되는, 아직 실제로 반영은 안 한 목표 배율
   fx: number; // 핀치 시작 시점 손가락 중간 지점이 콘텐츠 안에서 차지하는 위치(0-1)
   fy: number;
 }
@@ -48,8 +47,12 @@ function useAttachedElement<T extends HTMLElement>(ref: React.RefObject<T>): T |
  * 태블릿/휴대폰에서 두 손가락으로 꼬집듯이(pinch) 확대·축소하면, 화면 전체가 아니라
  * 교재를 보여주는 회색 영역 안에서만(scrollRef가 스크롤되는 그 영역) 확대/축소되도록
  * 한다 — 지도 앱처럼 그 상자 안에서만 확대·축소·드래그가 되고 나머지 화면은 그대로다.
- * zoom 값 자체를 바꾸는 것이라 PdfPageCanvas가 항상 그 배율에 맞는 해상도로 다시
- * 그려주므로 화질도 그대로 유지된다.
+ *
+ * PdfPageCanvas가 화면에 보일 수 있는 가장 큰 크기(MAX_ZOOM 기준)로 이미 한 번
+ * 그려 두고 CSS로만 줄여/키워 보여주는 방식이라(usePinchZoom과 짝을 이루는
+ * PdfPageCanvas.tsx의 renderWidth/displayWidth 분리 참고), 여기서 zoom 값을 손가락을
+ * 움직일 때마다 그대로 바꿔도 PDF를 다시 그리는 무거운 작업이 전혀 일어나지 않는다
+ * — 그래서 매 프레임 실시간으로 반영해도 매끄럽다.
  *
  * `touch-action: pan-x pan-y`처럼 브라우저의 기본 스크롤은 남겨 두고 핀치줌만 막는
  * 방식은 iOS Safari에서 완전히 신뢰할 수 없었다(기기에 따라 화면 전체가 그대로
@@ -80,29 +83,19 @@ export function usePinchZoom({
   const pinchRef = useRef<PinchState | null>(null);
   const panRef = useRef<PanState | null>(null);
   const midRef = useRef<{ x: number; y: number } | null>(null);
-  // commitPinch가 setZoom을 부르고 나면(비동기로 리렌더된 뒤) 아래 스크롤 보정 effect가
-  // 그 시점의 손가락 중간 지점을 알아야 하는데, pinchRef/midRef는 곧바로 null로
-  // 지워지므로 따로 담아 둔다.
-  const pendingCorrectionRef = useRef<{ fx: number; fy: number; mid: { x: number; y: number } } | null>(null);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
 
   // enabled가 꺼지는 순간(필기 도구 선택 등) 진행 중이던 팬/핀치를 확실히 정리한다.
-  // (핀치 종료를 잠깐 미뤄 두는 예약된 타이머가 있었다면 그건 아래 effect의 클린업이
-  // 처리하고, 여기서는 화면에 남아 있을 수 있는 미리보기 transform만 확실히 지운다.)
   useEffect(() => {
     if (!enabled) {
       pinchRef.current = null;
       panRef.current = null;
       midRef.current = null;
-      if (contentEl) {
-        contentEl.style.transform = "";
-        contentEl.style.transformOrigin = "";
-      }
     }
-  }, [enabled, contentEl]);
+  }, [enabled]);
 
   // enabled일 때만 이 영역의 터치를 전부 우리가 직접 처리하도록 브라우저 기본 동작을
   // (스크롤 포함) 끈다. 도구가 선택돼 있을 땐(그림을 그릴 때) 이전처럼 브라우저의
@@ -128,24 +121,10 @@ export function usePinchZoom({
       pinchRef.current = {
         startDistance: distance(t0, t1),
         startZoom: zoomRef.current,
-        liveZoom: zoomRef.current,
         fx: rect.width > 0 ? (m.x - rect.left) / rect.width : 0.5,
         fy: rect.height > 0 ? (m.y - rect.top) / rect.height : 0.5,
       };
       midRef.current = m;
-    };
-
-    // 핀치를 끝낼 때, 미리보기로만 쓰던 CSS transform을 지우고 실제 배율(liveZoom)을
-    // 커밋해서 그 배율에 맞는 화질로 다시 그리게 한다.
-    const commitPinch = () => {
-      const pinch = pinchRef.current;
-      if (!pinch) return;
-      contentEl.style.transform = "";
-      contentEl.style.transformOrigin = "";
-      if (pinch.liveZoom !== zoomRef.current && midRef.current) {
-        pendingCorrectionRef.current = { fx: pinch.fx, fy: pinch.fy, mid: midRef.current };
-        setZoom(pinch.liveZoom);
-      }
     };
 
     const startPan = (t: Touch) => {
@@ -154,10 +133,10 @@ export function usePinchZoom({
 
     // 일부 터치스크린/브라우저는 두 손가락으로 계속 누르고 있는 중에도 아주 짧은
     // 순간 손가락 하나를 "놓친" 것처럼(touches 개수가 잠깐 1개나 0개로) 잘못
-    // 보고하는 경우가 있다. 이걸 그대로 "손을 뗐다"고 받아들여 매번 커밋(다시
-        // 그리기)해 버리면, 손가락을 아주 조금만 움직여도 뚝뚝 끊기는 것처럼 보인다.
-    // 그래서 손가락 수가 줄어드는 순간 바로 확정하지 않고 아주 짧게(그 사이에
-    // 손가락이 다시 잡히면 취소되는) 유예 시간을 준 뒤에만 실제로 커밋한다.
+    // 보고하는 경우가 있다. 이걸 그대로 "손을 뗐다"고 받아들여 핀치를 바로
+    // 끝내 버리면(팬으로 전환 등) 배율이 튀어 보인다. 그래서 손가락 수가 줄어드는
+    // 순간 바로 확정하지 않고 아주 짧게(그 사이에 손가락이 다시 잡히면 취소되는)
+    // 유예 시간을 준 뒤에만 실제로 핀치를 끝낸다.
     let pendingEndTimer: ReturnType<typeof setTimeout> | null = null;
     const cancelPendingEnd = () => {
       if (pendingEndTimer !== null) {
@@ -169,7 +148,6 @@ export function usePinchZoom({
       cancelPendingEnd();
       pendingEndTimer = setTimeout(() => {
         pendingEndTimer = null;
-        commitPinch();
         pinchRef.current = null;
         midRef.current = null;
         if (remaining) startPan(remaining);
@@ -211,14 +189,10 @@ export function usePinchZoom({
         midRef.current = midpoint(e.touches[0], e.touches[1]);
         const ratio = d / pinchRef.current.startDistance;
         const next = Math.min(maxZoom, Math.max(minZoom, pinchRef.current.startZoom * ratio));
-        pinchRef.current.liveZoom = next;
-        // 손가락을 움직일 때마다 실제 캔버스를 다시 그리면(고화질 PDF 렌더링은
-        // 비용이 커서) 뚝뚝 끊겨 보인다. 그 대신 지도 앱처럼 CSS transform으로
-        // 지금 그려진 화면을 그 자리에서 즉시 확대/축소해 매끄럽게 보여주고,
-        // 실제 다시 그리기(화질 유지)는 손을 뗄 때 한 번만 한다.
-        const previewScale = next / pinchRef.current.startZoom;
-        contentEl.style.transformOrigin = `${pinchRef.current.fx * 100}% ${pinchRef.current.fy * 100}%`;
-        contentEl.style.transform = `scale(${previewScale})`;
+        // PdfPageCanvas는 이미 최대 배율 기준 해상도로 그려 둔 상태라, zoom을 손가락
+        // 움직임에 맞춰 바로바로 바꿔도 PDF를 다시 그리는 무거운 작업이 전혀 없다
+        // (CSS 크기만 바뀜) — 그래서 미리보기 없이 실시간으로 반영해도 매끄럽다.
+        setZoom(next);
       }
     };
 
@@ -265,17 +239,17 @@ export function usePinchZoom({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollEl, contentEl, minZoom, maxZoom]);
 
-  // 핀치를 커밋(setZoom)한 뒤 다시 그려진 직후, 손가락 사이 지점이 여전히 같은
+  // 줌 값이 바뀌어 다시 그려진 직후, 핀치 중이었다면 손가락 사이 지점이 여전히 같은
   // 화면 위치에 있도록 스크롤 위치를 보정한다.
   useEffect(() => {
-    const pending = pendingCorrectionRef.current;
-    if (!pending || !scrollEl || !contentEl) return;
-    pendingCorrectionRef.current = null;
+    const pinch = pinchRef.current;
+    const mid = midRef.current;
+    if (!pinch || !scrollEl || !contentEl || !mid) return;
     const rect = contentEl.getBoundingClientRect();
-    const targetX = rect.left + pending.fx * rect.width;
-    const targetY = rect.top + pending.fy * rect.height;
-    scrollEl.scrollLeft += targetX - pending.mid.x;
-    scrollEl.scrollTop += targetY - pending.mid.y;
+    const targetX = rect.left + pinch.fx * rect.width;
+    const targetY = rect.top + pinch.fy * rect.height;
+    scrollEl.scrollLeft += targetX - mid.x;
+    scrollEl.scrollTop += targetY - mid.y;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom]);
 }

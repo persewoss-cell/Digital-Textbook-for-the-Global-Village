@@ -18,6 +18,10 @@ interface BookPageProps {
   pageNumber: number;
   boxWidth: number;
   boxHeight: number;
+  /** 확대(zoom)와 무관하게 이 쪽이 화면에서 가장 커질 수 있는 크기. PdfPageCanvas가
+   * 이 크기 기준으로 한 번만 그려 두면, 실제 보여줄 크기(boxWidth)가 줌에 따라
+   * 바뀔 때마다 다시 그릴 필요 없이 CSS로만 줄여/키워 보여줄 수 있다. */
+  maxBoxWidth: number;
   uid: string;
   textbookId: string;
   tool: AnnotationTool;
@@ -45,6 +49,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     pageNumber,
     boxWidth,
     boxHeight,
+    maxBoxWidth,
     uid,
     textbookId,
     tool,
@@ -104,7 +109,8 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
         ref={pdfCanvasRef}
         pdf={pdf}
         pageNumber={pageNumber}
-        width={boxWidth}
+        renderWidth={maxBoxWidth}
+        displayWidth={boxWidth}
         onSize={() => {
           const seq = ++linkDetectSeq.current;
           detectPageLinks(pdf, pageNumber, pdfCanvasRef.current).then((found) => {

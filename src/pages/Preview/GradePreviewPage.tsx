@@ -49,7 +49,7 @@ function GradeCoverCard({
         style={{ width: COVER_WIDTH, height: COVER_WIDTH * 1.3 }}
       >
         {pdf ? (
-          <PdfPageCanvas pdf={pdf} pageNumber={1} width={COVER_WIDTH} />
+          <PdfPageCanvas pdf={pdf} pageNumber={1} renderWidth={COVER_WIDTH} displayWidth={COVER_WIDTH} />
         ) : (
           <span className="px-4 text-xs text-slate-400">
             {textbook === undefined ? "불러오는 중..." : "등록된 교재가 없어요"}

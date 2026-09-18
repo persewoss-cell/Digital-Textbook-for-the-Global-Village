@@ -87,8 +87,6 @@ export function Toolbar({
   onClearWhiteboard,
   showToc,
   onToggleToc,
-  showNotes,
-  onToggleNotes,
   readOnly,
 }: {
   viewMode: "single" | "spread";
@@ -117,8 +115,6 @@ export function Toolbar({
   onClearWhiteboard: () => void;
   showToc: boolean;
   onToggleToc: () => void;
-  showNotes: boolean;
-  onToggleNotes: () => void;
   readOnly: boolean;
 }) {
   const [query, setQuery] = useState("");
@@ -130,6 +126,16 @@ export function Toolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+      <button
+        className={`btn-ghost px-2 text-xs ${showToc ? "bg-brand-100 text-brand-700" : ""}`}
+        title="목차 보이기/숨기기"
+        onClick={onToggleToc}
+      >
+        📚 목차
+      </button>
+
+      <div className="mx-1 h-5 w-px bg-slate-200" />
+
       {/* view mode */}
       <div className="flex overflow-hidden rounded-lg border border-slate-300">
         <button
@@ -170,25 +176,6 @@ export function Toolbar({
           </button>
         )}
       </div>
-
-      <div className="mx-auto flex items-center gap-1">
-        <button
-          className={`btn-ghost px-2 text-xs ${showToc ? "bg-brand-100 text-brand-700" : ""}`}
-          title="목차 보이기/숨기기"
-          onClick={onToggleToc}
-        >
-          📚 목차
-        </button>
-        <button
-          className={`btn-ghost px-2 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
-          title="노트창 보이기/숨기기"
-          onClick={onToggleNotes}
-        >
-          🗒️ 노트창
-        </button>
-      </div>
-
-      <div className="mx-1 h-5 w-px bg-slate-200" />
 
       {!readOnly && (
         <>

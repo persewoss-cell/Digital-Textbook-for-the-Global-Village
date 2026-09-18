@@ -71,12 +71,16 @@ export default function PreviewViewerPage() {
   const whiteboardHistoryMap = useRef<Map<number, Stroke[][]>>(new Map());
   const whiteboardFutureMap = useRef<Map<number, Stroke[][]>>(new Map());
 
-  // 태블릿처럼 화면이 좁을 때는 목차/노트 패널이 교재가 보일 자리를 너무 많이 차지해서
+  // 태블릿처럼 화면이 좁을 때는 목차 패널이 교재가 보일 자리를 너무 많이 차지해서
   // 교재 주변에 회색 여백이 크게 남는다. 넓은 화면(데스크톱)에서는 기본으로 열어 두고,
   // 좁은 화면에서는 기본으로 닫아서 교재가 최대한 크게 보이게 하고, 필요하면 툴바에서
-  // 언제든 다시 열 수 있게 한다.
+  // 언제든 다시 열 수 있게 한다. 노트창은 별도 토글 없이 기본으로 켜져 있다가, 노트
+  // 도구를 선택하면 자동으로 열리고(아래 effect), 안에 있는 ✕ 버튼으로 닫을 수 있다.
   const [showToc, setShowToc] = useState(() => window.innerWidth >= 1024);
-  const [showNotes, setShowNotes] = useState(() => window.innerWidth >= 1024);
+  const [showNotes, setShowNotes] = useState(true);
+  useEffect(() => {
+    if (tool === "note") setShowNotes(true);
+  }, [tool]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -533,8 +537,6 @@ export default function PreviewViewerPage() {
           onClearWhiteboard={() => whiteboardRef.current?.clear()}
           showToc={showToc}
           onToggleToc={() => setShowToc((v) => !v)}
-          showNotes={showNotes}
-          onToggleNotes={() => setShowNotes((v) => !v)}
           readOnly={false}
         />
 

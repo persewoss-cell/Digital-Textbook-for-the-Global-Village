@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 interface PinchState {
   startDistance: number;
   startZoom: number;
+  liveZoom: number; // 손가락을 움직이는 동안 계속 갱신되는, 아직 실제로 반영은 안 한 목표 배율
   fx: number; // 핀치 시작 시점 손가락 중간 지점이 콘텐츠 안에서 차지하는 위치(0-1)
   fy: number;
 }
@@ -79,6 +80,10 @@ export function usePinchZoom({
   const pinchRef = useRef<PinchState | null>(null);
   const panRef = useRef<PanState | null>(null);
   const midRef = useRef<{ x: number; y: number } | null>(null);
+  // commitPinch가 setZoom을 부르고 나면(비동기로 리렌더된 뒤) 아래 스크롤 보정 effect가
+  // 그 시점의 손가락 중간 지점을 알아야 하는데, pinchRef/midRef는 곧바로 null로
+  // 지워지므로 따로 담아 둔다.
+  const pendingCorrectionRef = useRef<{ fx: number; fy: number; mid: { x: number; y: number } } | null>(null);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const enabledRef = useRef(enabled);
@@ -117,10 +122,24 @@ export function usePinchZoom({
       pinchRef.current = {
         startDistance: distance(t0, t1),
         startZoom: zoomRef.current,
+        liveZoom: zoomRef.current,
         fx: rect.width > 0 ? (m.x - rect.left) / rect.width : 0.5,
         fy: rect.height > 0 ? (m.y - rect.top) / rect.height : 0.5,
       };
       midRef.current = m;
+    };
+
+    // 핀치를 끝낼 때, 미리보기로만 쓰던 CSS transform을 지우고 실제 배율(liveZoom)을
+    // 커밋해서 그 배율에 맞는 화질로 다시 그리게 한다.
+    const commitPinch = () => {
+      const pinch = pinchRef.current;
+      if (!pinch) return;
+      contentEl.style.transform = "";
+      contentEl.style.transformOrigin = "";
+      if (pinch.liveZoom !== zoomRef.current && midRef.current) {
+        pendingCorrectionRef.current = { fx: pinch.fx, fy: pinch.fy, mid: midRef.current };
+        setZoom(pinch.liveZoom);
+      }
     };
 
     const startPan = (t: Touch) => {
@@ -130,6 +149,7 @@ export function usePinchZoom({
     const onTouchStart = (e: TouchEvent) => {
       if (!enabledRef.current) return;
       if (e.touches.length === 1) {
+        commitPinch();
         pinchRef.current = null;
         midRef.current = null;
         startPan(e.touches[0]);
@@ -152,18 +172,28 @@ export function usePinchZoom({
         midRef.current = midpoint(e.touches[0], e.touches[1]);
         const ratio = d / pinchRef.current.startDistance;
         const next = Math.min(maxZoom, Math.max(minZoom, pinchRef.current.startZoom * ratio));
-        setZoom(next);
+        pinchRef.current.liveZoom = next;
+        // 손가락을 움직일 때마다 실제 캔버스를 다시 그리면(고화질 PDF 렌더링은
+        // 비용이 커서) 뚝뚝 끊겨 보인다. 그 대신 지도 앱처럼 CSS transform으로
+        // 지금 그려진 화면을 그 자리에서 즉시 확대/축소해 매끄럽게 보여주고,
+        // 실제 다시 그리기(화질 유지)는 손을 뗄 때 한 번만 한다.
+        const previewScale = next / pinchRef.current.startZoom;
+        contentEl.style.transformOrigin = `${pinchRef.current.fx * 100}% ${pinchRef.current.fy * 100}%`;
+        contentEl.style.transform = `scale(${previewScale})`;
       }
     };
 
     const onTouchEnd = (e: TouchEvent) => {
       if (e.touches.length === 0) {
+        commitPinch();
         pinchRef.current = null;
         panRef.current = null;
         midRef.current = null;
       } else if (e.touches.length === 1) {
-        // 두 손가락 중 하나를 뗀 경우: 남은 손가락으로 자연스럽게 팬을 이어간다
-        // (튀는 현상 없이, 지금 위치를 새 시작점으로 삼는다).
+        // 두 손가락 중 하나를 뗀 경우: 지금까지의 확대 배율을 커밋하고, 남은
+        // 손가락으로 자연스럽게 팬을 이어간다(튀는 현상 없이, 지금 위치를 새
+        // 시작점으로 삼는다).
+        commitPinch();
         pinchRef.current = null;
         midRef.current = null;
         startPan(e.touches[0]);
@@ -197,17 +227,17 @@ export function usePinchZoom({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollEl, contentEl, minZoom, maxZoom]);
 
-  // 줌 값이 바뀌어 다시 그려진 직후, 핀치 중이었다면 손가락 사이 지점이 여전히 같은
+  // 핀치를 커밋(setZoom)한 뒤 다시 그려진 직후, 손가락 사이 지점이 여전히 같은
   // 화면 위치에 있도록 스크롤 위치를 보정한다.
   useEffect(() => {
-    const pinch = pinchRef.current;
-    const mid = midRef.current;
-    if (!pinch || !scrollEl || !contentEl || !mid) return;
+    const pending = pendingCorrectionRef.current;
+    if (!pending || !scrollEl || !contentEl) return;
+    pendingCorrectionRef.current = null;
     const rect = contentEl.getBoundingClientRect();
-    const targetX = rect.left + pinch.fx * rect.width;
-    const targetY = rect.top + pinch.fy * rect.height;
-    scrollEl.scrollLeft += targetX - mid.x;
-    scrollEl.scrollTop += targetY - mid.y;
+    const targetX = rect.left + pending.fx * rect.width;
+    const targetY = rect.top + pending.fy * rect.height;
+    scrollEl.scrollLeft += targetX - pending.mid.x;
+    scrollEl.scrollTop += targetY - pending.mid.y;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom]);
 }

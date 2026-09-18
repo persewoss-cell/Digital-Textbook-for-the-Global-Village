@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 
 /** 브라우저 확대(Ctrl+휠 등)로 devicePixelRatio가 바뀌면 최신 값을 돌려준다. */
 function useDevicePixelRatio() {
@@ -35,6 +35,7 @@ export const PdfPageCanvas = forwardRef<
 
   useEffect(() => {
     let cancelled = false;
+    let renderTask: RenderTask | null = null;
     (async () => {
       const page = await pdf.getPage(pageNumber);
       if (cancelled) return;
@@ -55,11 +56,25 @@ export const PdfPageCanvas = forwardRef<
       canvas.style.height = `${cssHeight}px`;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      await page.render({ canvasContext: ctx, viewport }).promise;
+      // 렌더링 도중(예: 레이아웃이 다시 계산돼 width가 또 바뀌는 경우) 이 effect가
+      // 다시 실행되면, 이전 렌더링이 끝나기 전에 같은 캔버스에 새 렌더링을 또 시작하게
+      // 되어 pdf.js가 "Cannot use the same canvas during multiple render() operations"
+      // 오류를 내며 캔버스가 반쯤 그려진(뒤집혀 보이는 등 이상한) 상태로 남는 문제가
+      // 있었다. 진행 중인 렌더링을 렌더 태스크로 잡아 두었다가, 새로 시작하기 전이나
+      // 이 effect가 정리될 때 확실히 취소한다.
+      try {
+        const task = page.render({ canvasContext: ctx, viewport });
+        renderTask = task;
+        await task.promise;
+      } catch (err) {
+        if (cancelled) return; // 우리가 취소해서 난 에러는 무시
+        throw err;
+      }
       if (!cancelled) onSize?.(width, cssHeight);
     })();
     return () => {
       cancelled = true;
+      renderTask?.cancel();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdf, pageNumber, width, dpr]);

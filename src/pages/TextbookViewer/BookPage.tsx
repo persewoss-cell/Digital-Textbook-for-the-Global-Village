@@ -142,9 +142,6 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
         />
       )}
       <PageLinkOverlay links={links} interactive={tool === "none"} />
-      <div className="pointer-events-none absolute bottom-1 right-2 text-[10px] text-slate-400">
-        {pageNumber}
-      </div>
     </div>
   );
 });

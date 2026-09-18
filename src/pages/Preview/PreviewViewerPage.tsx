@@ -23,9 +23,9 @@ import { usePinchZoom } from "@/pages/TextbookViewer/usePinchZoom";
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
-const PAGE_GAP = 10;
-const CONTAINER_PADDING = 16;
-const FIT_SAFETY_MARGIN = 12;
+const PAGE_GAP = 0;
+const CONTAINER_PADDING = 4;
+const FIT_SAFETY_MARGIN = 6;
 
 // 체험 모드는 방/학생 계정이 없으므로 uid는 저장에 쓰이지 않는 자리표시자일 뿐이다.
 const PREVIEW_UID = "preview";
@@ -576,7 +576,7 @@ export default function PreviewViewerPage() {
             ) : (
               <>
                 <div ref={scrollRef} className="absolute inset-0 overflow-auto" style={{ touchAction: "pan-x pan-y" }}>
-                  <div className="flex min-h-full p-4">
+                  <div className="flex min-h-full p-1">
                     <div
                       ref={contentRef}
                       className="relative m-auto flex shadow-2xl"

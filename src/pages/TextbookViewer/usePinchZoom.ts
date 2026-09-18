@@ -77,15 +77,29 @@ export function usePinchZoom({
       }
     };
 
+    // iOS Safari는 touch-action CSS만으로는 화면 전체를 확대하는 자체 핀치줌 제스처를
+    // 완전히 막지 못하고, 대신 표준 터치 이벤트와는 별도로 독자적인 제스처 이벤트
+    // (gesturestart/gesturechange)를 발생시킨다. 이 이벤트에서도 preventDefault를
+    // 호출해야 브라우저 자체 확대가 끼어들지 않고 우리 핀치줌 로직만 동작한다.
+    const onGestureStart = (e: Event) => {
+      if (enabledRef.current) e.preventDefault();
+    };
+    const onGestureChange = (e: Event) => {
+      if (enabledRef.current) e.preventDefault();
+    };
     el.addEventListener("touchstart", onTouchStart, { passive: false });
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("touchend", onTouchEnd);
     el.addEventListener("touchcancel", onTouchEnd);
+    el.addEventListener("gesturestart", onGestureStart as EventListener, { passive: false });
+    el.addEventListener("gesturechange", onGestureChange as EventListener, { passive: false });
     return () => {
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("touchcancel", onTouchEnd);
+      el.removeEventListener("gesturestart", onGestureStart as EventListener);
+      el.removeEventListener("gesturechange", onGestureChange as EventListener);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollRef, contentRef, minZoom, maxZoom]);

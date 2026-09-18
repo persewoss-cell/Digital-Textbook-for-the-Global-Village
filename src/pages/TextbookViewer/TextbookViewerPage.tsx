@@ -35,9 +35,9 @@ import { usePinchZoom } from "./usePinchZoom";
 const ZOOM_STEP = 0.2;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
-const PAGE_GAP = 10;
-const CONTAINER_PADDING = 16;
-const FIT_SAFETY_MARGIN = 12;
+const PAGE_GAP = 0;
+const CONTAINER_PADDING = 4;
+const FIT_SAFETY_MARGIN = 6;
 
 // 표지(1쪽)는 혼자 오른쪽에 보이고, 2쪽부터 (2,3) (4,5) (6,7)... 순서로 짝을 이룬다.
 const spreadStart = (n: number) => (n <= 1 ? 1 : n % 2 === 0 ? n : n - 1);
@@ -715,7 +715,7 @@ export default function TextbookViewerPage() {
                       두고 안쪽 내용에 margin:auto로 가운데를 맞추면, 내용이 작을 때는 그대로
                       가운데 정렬되면서 커졌을 때는 처음(왼쪽/위)부터 자연스럽게 넘쳐서 전체를
                       스크롤로 온전히 볼 수 있다. */}
-                  <div className="flex min-h-full p-4">
+                  <div className="flex min-h-full p-1">
                     <div
                       ref={contentRef}
                       className="relative m-auto flex shadow-2xl"

@@ -142,6 +142,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
           activeId={activeNoteId}
           active={tool === "note"}
           readOnly={readOnly}
+          pageWidth={boxWidth}
           onCreate={onCreateNote}
           onSelect={onSelectNote}
           onMove={onMoveNote}

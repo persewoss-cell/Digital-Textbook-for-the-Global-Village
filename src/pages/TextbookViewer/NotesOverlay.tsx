@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { STROKE_WIDTH_REFERENCE } from "./AnnotationLayer";
 import type { PlacedNote } from "@/types";
 
 export const DEFAULT_NOTE_FONT_SIZE = 12;
@@ -8,6 +9,7 @@ export function NotesOverlay({
   activeId,
   active,
   readOnly,
+  pageWidth,
   onCreate,
   onSelect,
   onMove,
@@ -16,10 +18,15 @@ export function NotesOverlay({
   activeId: string | null;
   active: boolean;
   readOnly: boolean;
+  /** 이 쪽이 화면에 지금 표시되는 실제 너비(px). note.fontSize는 STROKE_WIDTH_REFERENCE
+   * 기준으로 고른 값이라, 확대/축소로 쪽 크기가 달라질 때 그 비율만큼 환산해야
+   * 메모 글씨가 쪽 크기에 비례해서 커지고 작아진다. */
+  pageWidth: number;
   onCreate: (x: number, y: number) => void;
   onSelect: (id: string) => void;
   onMove: (id: string, x: number, y: number) => void;
 }) {
+  const widthScale = pageWidth / STROKE_WIDTH_REFERENCE;
   const clickable = active && !readOnly;
   const drag = useRef<{ id: string; startX: number; startY: number; x: number; y: number; moved: boolean } | null>(
     null,
@@ -81,7 +88,7 @@ export function NotesOverlay({
           style={{
             left: `${note.x * 100}%`,
             top: `${note.y * 100}%`,
-            fontSize: note.fontSize ?? DEFAULT_NOTE_FONT_SIZE,
+            fontSize: (note.fontSize ?? DEFAULT_NOTE_FONT_SIZE) * widthScale,
             pointerEvents: readOnly ? "none" : "auto",
             color: note.text ? "#0f172a" : undefined,
             touchAction: "none",

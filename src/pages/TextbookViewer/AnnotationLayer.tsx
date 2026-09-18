@@ -242,9 +242,13 @@ export const AnnotationLayer = forwardRef<
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    // stroke.width는 STROKE_WIDTH_REFERENCE 기준으로 고른 값이므로, 확대/축소로 이
+    // 캔버스의 실제 크기가 달라질 때마다 그 비율만큼 다시 환산해야 굵기가 쪽 크기에
+    // 비례해서 커지고 작아진다(그렇지 않으면 축소했을 때 상대적으로 두꺼워 보인다).
+    const widthScale = canvas.width / STROKE_WIDTH_REFERENCE;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    source.forEach((s) => drawStroke(ctx, s, canvas.width, canvas.height));
-    if (extra) drawStroke(ctx, extra, canvas.width, canvas.height);
+    source.forEach((s) => drawStroke(ctx, s, canvas.width, canvas.height, widthScale));
+    if (extra) drawStroke(ctx, extra, canvas.width, canvas.height, widthScale);
   };
 
   useEffect(() => {

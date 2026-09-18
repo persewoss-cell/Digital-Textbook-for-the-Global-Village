@@ -90,13 +90,19 @@ export function usePinchZoom({
   enabledRef.current = enabled;
 
   // enabled가 꺼지는 순간(필기 도구 선택 등) 진행 중이던 팬/핀치를 확실히 정리한다.
+  // (핀치 종료를 잠깐 미뤄 두는 예약된 타이머가 있었다면 그건 아래 effect의 클린업이
+  // 처리하고, 여기서는 화면에 남아 있을 수 있는 미리보기 transform만 확실히 지운다.)
   useEffect(() => {
     if (!enabled) {
       pinchRef.current = null;
       panRef.current = null;
       midRef.current = null;
+      if (contentEl) {
+        contentEl.style.transform = "";
+        contentEl.style.transformOrigin = "";
+      }
     }
-  }, [enabled]);
+  }, [enabled, contentEl]);
 
   // enabled일 때만 이 영역의 터치를 전부 우리가 직접 처리하도록 브라우저 기본 동작을
   // (스크롤 포함) 끈다. 도구가 선택돼 있을 땐(그림을 그릴 때) 이전처럼 브라우저의
@@ -146,16 +152,46 @@ export function usePinchZoom({
       panRef.current = { x: t.clientX, y: t.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
     };
 
-    const onTouchStart = (e: TouchEvent) => {
-      if (!enabledRef.current) return;
-      if (e.touches.length === 1) {
+    // 일부 터치스크린/브라우저는 두 손가락으로 계속 누르고 있는 중에도 아주 짧은
+    // 순간 손가락 하나를 "놓친" 것처럼(touches 개수가 잠깐 1개나 0개로) 잘못
+    // 보고하는 경우가 있다. 이걸 그대로 "손을 뗐다"고 받아들여 매번 커밋(다시
+        // 그리기)해 버리면, 손가락을 아주 조금만 움직여도 뚝뚝 끊기는 것처럼 보인다.
+    // 그래서 손가락 수가 줄어드는 순간 바로 확정하지 않고 아주 짧게(그 사이에
+    // 손가락이 다시 잡히면 취소되는) 유예 시간을 준 뒤에만 실제로 커밋한다.
+    let pendingEndTimer: ReturnType<typeof setTimeout> | null = null;
+    const cancelPendingEnd = () => {
+      if (pendingEndTimer !== null) {
+        clearTimeout(pendingEndTimer);
+        pendingEndTimer = null;
+      }
+    };
+    const schedulePinchEnd = (remaining: Touch | null) => {
+      cancelPendingEnd();
+      pendingEndTimer = setTimeout(() => {
+        pendingEndTimer = null;
         commitPinch();
         pinchRef.current = null;
         midRef.current = null;
-        startPan(e.touches[0]);
-      } else if (e.touches.length === 2) {
+        if (remaining) startPan(remaining);
+        else panRef.current = null;
+      }, 120);
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (!enabledRef.current) return;
+      if (e.touches.length === 2) {
+        // 핀치 도중 손가락 수가 잠깐 줄었다가 다시 2개로 돌아온 경우(위 설명 참고)라면
+        // 예약된 종료를 취소하고 기존 핀치를 그대로 이어간다 — 여기서 새로 시작하면
+        // 배율 기준(startDistance)이 지금 손가락 위치로 다시 잡혀서 확대가 튀어 보인다.
+        cancelPendingEnd();
+        if (pinchRef.current) return;
         panRef.current = null;
         startPinch(e.touches[0], e.touches[1]);
+      } else if (e.touches.length === 1) {
+        if (pinchRef.current) return; // 핀치 종료 유예 시간 중 — schedulePinchEnd가 처리
+        cancelPendingEnd();
+        midRef.current = null;
+        startPan(e.touches[0]);
       }
     };
 
@@ -168,6 +204,9 @@ export function usePinchZoom({
         el.scrollTop = panRef.current.scrollTop - (t.clientY - panRef.current.y);
       } else if (e.touches.length === 2 && pinchRef.current) {
         e.preventDefault(); // 브라우저 자체의 페이지 확대(핀치줌)가 대신 발생하지 않도록 막는다
+        // touchstart 없이 손가락 수가 바로 2로 다시 확인된 경우(예약된 종료를 아직
+        // 취소할 기회가 없었던 경우)에도, 계속 핀치 중임이 확실하므로 예약을 취소한다.
+        cancelPendingEnd();
         const d = distance(e.touches[0], e.touches[1]);
         midRef.current = midpoint(e.touches[0], e.touches[1]);
         const ratio = d / pinchRef.current.startDistance;
@@ -184,18 +223,16 @@ export function usePinchZoom({
     };
 
     const onTouchEnd = (e: TouchEvent) => {
+      if (pinchRef.current) {
+        // 핀치 중이었다면 진짜로 손을 뗀 건지, 순간적으로 잘못 인식된 건지 잠깐
+        // 기다렸다가 확정한다(schedulePinchEnd 위 설명 참고).
+        schedulePinchEnd(e.touches[0] ?? null);
+        return;
+      }
       if (e.touches.length === 0) {
-        commitPinch();
-        pinchRef.current = null;
         panRef.current = null;
         midRef.current = null;
       } else if (e.touches.length === 1) {
-        // 두 손가락 중 하나를 뗀 경우: 지금까지의 확대 배율을 커밋하고, 남은
-        // 손가락으로 자연스럽게 팬을 이어간다(튀는 현상 없이, 지금 위치를 새
-        // 시작점으로 삼는다).
-        commitPinch();
-        pinchRef.current = null;
-        midRef.current = null;
         startPan(e.touches[0]);
       }
     };
@@ -217,6 +254,7 @@ export function usePinchZoom({
     el.addEventListener("gesturestart", onGestureStart as EventListener, { passive: false });
     el.addEventListener("gesturechange", onGestureChange as EventListener, { passive: false });
     return () => {
+      cancelPendingEnd();
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);

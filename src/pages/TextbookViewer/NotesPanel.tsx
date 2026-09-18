@@ -22,6 +22,7 @@ export function NotesPanel({
   onChangeFontSize,
   onDelete,
   onClose,
+  onAddNote,
 }: {
   items: PlacedNote[];
   activeId: string | null;
@@ -33,6 +34,7 @@ export function NotesPanel({
   onChangeFontSize: (id: string, fontSize: number) => void;
   onDelete: (id: string) => void;
   onClose?: () => void;
+  onAddNote?: () => void;
 }) {
   const refs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
 
@@ -62,12 +64,20 @@ export function NotesPanel({
           )}
         </div>
         <p className="text-xs text-slate-400">
-          {readOnly
-            ? "읽기 전용이에요."
-            : noteToolActive
-              ? "교재의 빈 곳을 한 번 클릭해서 메모를 추가하세요."
-              : "툴바의 ✏️노트 버튼을 누르고 교재를 한 번 클릭하면 메모가 추가돼요."}
+          {readOnly ? "읽기 전용이에요." : noteToolActive ? "교재의 빈 곳을 한 번 클릭해서 메모를 추가하세요." : ""}
         </p>
+        {!readOnly && onAddNote && (
+          <button
+            className={`mt-2 w-full rounded-lg border px-2 py-1.5 text-xs font-semibold ${
+              noteToolActive
+                ? "border-brand-500 bg-brand-50 text-brand-700"
+                : "border-slate-200 text-slate-600 hover:bg-slate-50"
+            }`}
+            onClick={onAddNote}
+          >
+            {noteToolActive ? "교재를 클릭해서 추가하세요" : "+ 메모 추가"}
+          </button>
+        )}
       </div>
       <div className="flex-1 space-y-2 overflow-auto p-3">
         {items.map((note) => {

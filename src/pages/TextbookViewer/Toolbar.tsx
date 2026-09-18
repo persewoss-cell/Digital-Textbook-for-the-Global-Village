@@ -87,6 +87,10 @@ export function Toolbar({
   onClearWhiteboard,
   showToc,
   onToggleToc,
+  showNotes,
+  onToggleNotes,
+  currentPage,
+  numPages,
   readOnly,
 }: {
   viewMode: "single" | "spread";
@@ -115,6 +119,10 @@ export function Toolbar({
   onClearWhiteboard: () => void;
   showToc: boolean;
   onToggleToc: () => void;
+  showNotes: boolean;
+  onToggleNotes: () => void;
+  currentPage: number;
+  numPages: number;
   readOnly: boolean;
 }) {
   const [query, setQuery] = useState("");
@@ -133,6 +141,19 @@ export function Toolbar({
       >
         📚 목차
       </button>
+      <button
+        className={`btn-ghost px-2 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
+        title="노트창 보이기/숨기기"
+        onClick={onToggleNotes}
+      >
+        📝 노트
+      </button>
+
+      <div className="mx-1 h-5 w-px bg-slate-200" />
+
+      <div className="mx-auto text-sm font-semibold text-slate-600">
+        {currentPage} / {numPages}쪽
+      </div>
 
       <div className="mx-1 h-5 w-px bg-slate-200" />
 
@@ -306,13 +327,6 @@ export function Toolbar({
             </button>
             <button className="btn-ghost px-2 disabled:opacity-30" title="다시 실행" onClick={onRedo}>
               ↷
-            </button>
-            <button
-              className={`btn-ghost px-2 text-xs ${tool === "note" ? "bg-brand-100 text-brand-700" : ""}`}
-              title="노트(빈칸에 글쓰기)"
-              onClick={() => onToolChange(tool === "note" ? "none" : "note")}
-            >
-              📝 노트
             </button>
           </div>
           <div className="mx-1 h-5 w-px bg-slate-200" />

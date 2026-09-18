@@ -112,13 +112,10 @@ export default function TextbookViewerPage() {
   // 태블릿처럼 화면이 좁을 때는 목차 패널이 교재가 보일 자리를 너무 많이 차지해서
   // 교재 주변에 회색 여백이 크게 남는다. 넓은 화면(데스크톱)에서는 기본으로 열어 두고,
   // 좁은 화면에서는 기본으로 닫아서 교재가 최대한 크게 보이게 하고, 필요하면 툴바에서
-  // 언제든 다시 열 수 있게 한다. 노트창은 별도 토글 없이 기본으로 켜져 있다가, 노트
-  // 도구를 선택하면 자동으로 열리고(아래 effect), 안에 있는 ✕ 버튼으로 닫을 수 있다.
+  // 언제든 다시 열 수 있게 한다. 노트창은 기본으로 켜져 있고 툴바의 노트 버튼으로
+  // 여닫는다(메모 추가는 노트창 안의 "+ 메모 추가" 버튼으로).
   const [showToc, setShowToc] = useState(() => window.innerWidth >= 1024);
   const [showNotes, setShowNotes] = useState(true);
-  useEffect(() => {
-    if (tool === "note") setShowNotes(true);
-  }, [tool]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -272,6 +269,19 @@ export default function TextbookViewerPage() {
     setActiveNotePage(primaryPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primaryPage]);
+
+  // 툴바에 보여줄 쪽수는 PDF 파일 안에서의 물리적 순번이 아니라, 교재에 실제로 인쇄된
+  // 쪽번호와 맞아야 한다(둘이 보통 다르다 — 표지/차례 등 앞부분 때문에). 목차에 이미
+  // "물리적 쪽번호 -> 인쇄된 쪽번호" 오프셋 정보가 들어 있으니(printedPage), 지금 쪽에
+  // 가장 가까운 단원의 오프셋을 그대로 가져다 쓴다.
+  const printedOffset = useMemo(() => {
+    const withPrinted = (textbook?.chapters ?? []).filter((c) => c.printedPage !== undefined);
+    if (withPrinted.length === 0) return 0;
+    const active = [...withPrinted].reverse().find((c) => c.startPage <= primaryPage) ?? withPrinted[0];
+    return active.startPage - (active.printedPage as number);
+  }, [textbook, primaryPage]);
+  const printedCurrentPage = Math.max(1, primaryPage - printedOffset);
+  const printedNumPages = Math.max(printedCurrentPage, numPages - printedOffset);
 
   useEffect(() => {
     if (!effectiveUid || !textbookId) return;
@@ -661,6 +671,10 @@ export default function TextbookViewerPage() {
           onClearWhiteboard={() => whiteboardRef.current?.clear()}
           showToc={showToc}
           onToggleToc={() => setShowToc((v) => !v)}
+          showNotes={showNotes}
+          onToggleNotes={() => setShowNotes((v) => !v)}
+          currentPage={printedCurrentPage}
+          numPages={printedNumPages}
           readOnly={readOnly}
         />
 
@@ -805,6 +819,7 @@ export default function TextbookViewerPage() {
               onChangeFontSize={handleChangeNoteFontSize}
               onDelete={handleDeleteNote}
               onClose={() => setShowNotes(false)}
+              onAddNote={() => setTool((t) => (t === "note" ? "none" : "note"))}
             />
           )}
         </div>

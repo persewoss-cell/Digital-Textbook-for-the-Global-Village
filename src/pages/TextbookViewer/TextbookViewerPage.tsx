@@ -166,7 +166,12 @@ export default function TextbookViewerPage() {
         const vp = firstPage.getViewport({ scale: 1 });
         setAspect(vp.height / vp.width);
 
-        if (doc.chapters.length === 0) {
+        // printedPage(실제 인쇄된 쪽번호) 필드가 생기기 전에 이미 추출/저장된 목차는
+        // 그 필드가 없어서 물리적 PDF 쪽번호가 대신 표시되는 문제가 있었다. 그런 옛
+        // 데이터를 만나면 한 번 더 다시 추출해서 새 필드로 갱신한다.
+        const needsReextract =
+          doc.chapters.length === 0 || doc.chapters.some((c) => c.printedPage === undefined);
+        if (needsReextract) {
           // PDF에 포함된 실제 차례를 분석해서 목차를 자동으로 만들어 저장한다.
           extractRealChapters(pdfDoc)
             .then((chapters) => {
@@ -699,14 +704,11 @@ export default function TextbookViewerPage() {
               </div>
             ) : (
               <>
-                <div
-                  ref={scrollRef}
-                  className="absolute inset-0 overflow-auto"
-                  style={{ touchAction: "pan-x pan-y" }}
-                >
-                  {/* touchAction: 브라우저 기본 두 손가락 확대(핀치)는 막고 한 손가락 스크롤(pan)은
-                      그대로 둬서, 두 손가락으로 꼬집을 때 화면(브라우저) 전체가 아니라 usePinchZoom이
-                      다루는 이 회색 영역 안의 교재만 확대/축소되게 한다. */}
+                <div ref={scrollRef} className="absolute inset-0 overflow-auto">
+                  {/* touch-action은 usePinchZoom 훅이 enabled 상태에 맞춰 직접 설정한다
+                      (enabled일 땐 "none"으로 브라우저 기본 동작을 끄고 팬/핀치줌을 전부
+                      직접 구현 — 두 손가락으로 꼬집을 때 화면(브라우저) 전체가 아니라 이
+                      회색 영역 안의 교재만 확대/축소되게 하기 위함). */}
                   {/* items-center/justify-center로 가운데 정렬하면, 확대해서 내용이 컨테이너보다
                       커졌을 때 브라우저가 넘치는 부분을 좌우/상하로 "똑같이" 넘치게 만드는데,
                       그중 시작(왼쪽/위) 쪽으로 넘친 부분은 스크롤해도 닿지 않는 버그가 있다.

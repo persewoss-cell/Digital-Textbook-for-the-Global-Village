@@ -183,10 +183,13 @@ export async function extractRealChapters(pdf: PDFDocumentProxy): Promise<Chapte
     const firstPhysical = printedToPhysical.get(rows[0].printedPage);
     if (firstPhysical) {
       const unitStart = Math.max(1, firstPhysical - 1);
+      // Firestore updateDoc는 필드 값이 undefined면 오류를 내며 저장 자체를 실패시키므로
+      // (그러면 다음에 들어올 때마다 매번 다시 추출을 시도하게 된다), 계산할 수 없을 땐
+      // printedPage 필드를 아예 넣지 않는다(undefined로 넣지 않는다).
       chapters.push({
         title: `${unitCounter}단원. ${unitTitle}`,
         startPage: unitStart,
-        printedPage: rows[0].printedPage - 1 > 0 ? rows[0].printedPage - 1 : undefined,
+        ...(rows[0].printedPage - 1 > 0 ? { printedPage: rows[0].printedPage - 1 } : {}),
       });
     }
     for (const row of rows) {

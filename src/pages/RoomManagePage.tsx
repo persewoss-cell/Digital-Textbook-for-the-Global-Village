@@ -180,13 +180,18 @@ export default function RoomManagePage() {
 
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridWidth, setGridWidth] = useState(900);
+  // room/unlocked이 아직 준비되지 않은 동안은 로딩 화면만 그려져서 gridRef가 아직
+  // DOM에 붙지 않은 상태다. 의존성 배열이 비어 있으면 그 순간(el이 null)에 딱 한 번만
+  // 실행되고 다시는 재실행되지 않아, 그리드가 뜬 뒤에도 실제 크기를 영영 측정하지
+  // 못해 항상 기본값(900)으로 열 개수/썸네일 크기를 계산하는 문제가 있었다. 로딩이
+  // 끝나는 시점에 맞춰 effect가 재실행되도록 의존성에 넣어 이 경쟁 상태를 없앤다.
   useEffect(() => {
     const el = gridRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => setGridWidth(entries[0].contentRect.width));
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [room, unlocked]);
   const columns = Math.max(
     1,
     Math.min(MAX_COLUMNS, Math.floor((gridWidth + GRID_GAP) / (THUMB_MIN_WIDTH + GRID_GAP))),

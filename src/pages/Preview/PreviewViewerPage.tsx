@@ -123,7 +123,12 @@ export default function PreviewViewerPage() {
         const vp = firstPage.getViewport({ scale: 1 });
         setAspect(vp.height / vp.width);
 
-        if (doc.chapters.length === 0) {
+        // printedPage(실제 인쇄된 쪽번호) 필드가 생기기 전에 이미 추출/저장된 목차는
+        // 그 필드가 없어서 물리적 PDF 쪽번호가 대신 표시되는 문제가 있었다. 그런 옛
+        // 데이터를 만나면 한 번 더 다시 추출해서 새 필드로 갱신한다.
+        const needsReextract =
+          doc.chapters.length === 0 || doc.chapters.some((c) => c.printedPage === undefined);
+        if (needsReextract) {
           extractRealChapters(pdfDoc)
             .then((chapters) => {
               if (cancelled || chapters.length === 0) return;
@@ -575,7 +580,7 @@ export default function PreviewViewerPage() {
               </div>
             ) : (
               <>
-                <div ref={scrollRef} className="absolute inset-0 overflow-auto" style={{ touchAction: "pan-x pan-y" }}>
+                <div ref={scrollRef} className="absolute inset-0 overflow-auto">
                   <div className="flex min-h-full p-1">
                     <div
                       ref={contentRef}

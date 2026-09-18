@@ -13,8 +13,7 @@ service cloud.firestore {
     }
 
     match /rooms/{roomId} {
-      allow read, create, delete: if isSignedIn();
-      allow update: if false;
+      allow read, create, delete, update: if isSignedIn();
     }
 
     match /participants/{id} {

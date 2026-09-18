@@ -7,6 +7,7 @@ import {
   onSnapshot,
   query,
   setDoc,
+  updateDoc,
   where,
   writeBatch,
   type Unsubscribe,
@@ -74,6 +75,36 @@ export function watchParticipants(roomId: string, cb: (rows: ParticipantDoc[]) =
   return onSnapshot(q, (snap) =>
     cb(snap.docs.map((d) => d.data() as ParticipantDoc).sort((a, b) => a.studentNum - b.studentNum)),
   );
+}
+
+/** 선생님이 학생 목록 화면에서 번호/이름을 직접 등록·수정할 때도 학생이 스스로 입장할 때와
+ * 같은 방식(같은 방+번호는 같은 학생)으로 저장되도록 joinRoom과 동일한 upsert를 그대로 쓴다. */
+export const registerParticipant = joinRoom;
+
+/** 여러 명을 한 번에 등록할 때(엑셀 일괄 등록) 문서 수만큼 왕복하지 않도록 배치로 저장한다. */
+export async function bulkRegisterParticipants(
+  roomId: string,
+  students: { studentNum: number; name: string }[],
+): Promise<void> {
+  const CHUNK_SIZE = 400; // Firestore 배치 쓰기 상한(500)보다 여유 있게 나눠서 처리
+  for (let i = 0; i < students.length; i += CHUNK_SIZE) {
+    const batch = writeBatch(db);
+    const now = Date.now();
+    for (const { studentNum, name } of students.slice(i, i + CHUNK_SIZE)) {
+      const key = participantKey(roomId, studentNum);
+      const data: ParticipantDoc = { id: key, roomId, studentNum, name: name.trim(), joinedAt: now };
+      batch.set(doc(db, "participants", key), data, { merge: true });
+    }
+    await batch.commit();
+  }
+}
+
+export async function removeParticipant(roomId: string, studentNum: number): Promise<void> {
+  await deleteDoc(doc(db, "participants", participantKey(roomId, studentNum)));
+}
+
+export async function updateRoomPassword(roomId: string, password: string): Promise<void> {
+  await updateDoc(doc(db, "rooms", roomId), { password });
 }
 
 const ROOM_SCOPED_COLLECTIONS = [

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { AppShell } from "@/components/AppShell";
+import { ChangeRoomPasswordModal } from "@/components/ChangeRoomPasswordModal";
+import { StudentRosterModal } from "@/components/StudentRosterModal";
 import { deleteRoomCascade, getRoom, participantKey, watchParticipants } from "@/lib/rooms";
 import { getFirstTextbookForGrade, watchAnnotation, watchNote, watchProgress } from "@/lib/firestore";
 import { loadPdf } from "@/lib/pdf";
@@ -177,6 +179,8 @@ export default function RoomManagePage() {
   const [textbook, setTextbook] = useState<TextbookDoc | null>(null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [aspect, setAspect] = useState(1.41);
+  const [showRoster, setShowRoster] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const gridRef = useRef<HTMLDivElement>(null);
   const [gridWidth, setGridWidth] = useState(900);
@@ -334,9 +338,17 @@ export default function RoomManagePage() {
               {room.teacherName} 선생님 · {textbook?.title ?? "교과서 없음"}
             </p>
           </div>
-          <button className="btn-secondary text-red-500" onClick={handleDelete}>
-            방 삭제하기
-          </button>
+          <div className="flex gap-2">
+            <button className="btn-secondary" onClick={() => setShowRoster(true)}>
+              학생 등록하기
+            </button>
+            <button className="btn-secondary" onClick={() => setShowChangePassword(true)}>
+              비밀번호 변경하기
+            </button>
+            <button className="btn-secondary text-red-500" onClick={handleDelete}>
+              방 삭제하기
+            </button>
+          </div>
         </div>
 
         <p className="mb-3 text-xs text-slate-400">
@@ -377,6 +389,22 @@ export default function RoomManagePage() {
           )}
         </div>
       </div>
+
+      {showRoster && (
+        <StudentRosterModal
+          roomId={roomId}
+          participants={participants}
+          onClose={() => setShowRoster(false)}
+        />
+      )}
+      {showChangePassword && (
+        <ChangeRoomPasswordModal
+          roomId={roomId}
+          currentPassword={room.password}
+          onClose={() => setShowChangePassword(false)}
+          onChanged={(newPassword) => setRoom({ ...room, password: newPassword })}
+        />
+      )}
     </AppShell>
   );
 }

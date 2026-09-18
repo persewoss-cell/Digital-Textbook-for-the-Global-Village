@@ -346,61 +346,63 @@ export function Toolbar({
         </>
       )}
 
-      {/* search: 팝오버가 아니라 항상 상단 줄에 보이도록 */}
-      <div className="relative flex items-center gap-1">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSearch(query);
-          }}
-          className="flex flex-nowrap items-center gap-1"
-        >
-          <input
-            className="input h-8 w-28 py-1 text-xs sm:w-40"
-            placeholder="교재 내 검색"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <button className="btn-ghost shrink-0 px-2" type="submit" title="검색">
-            🔎
-          </button>
-        </form>
-        {query.trim() && (
-          <div className="absolute left-0 top-9 z-20 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
-            <div className="max-h-48 space-y-1 overflow-auto">
-              {searchResults.map((r, i) => (
-                <button
-                  key={i}
-                  className="block w-full rounded-lg px-2 py-1 text-left text-xs hover:bg-slate-100"
-                  onClick={() => {
-                    onJumpToResult(r.page);
-                    setQuery("");
-                  }}
-                >
-                  <span className="font-semibold text-brand-700">{r.page}쪽</span> {r.snippet}
-                </button>
-              ))}
-              {searchResults.length === 0 && (
-                <p className="px-2 py-1 text-xs text-slate-400">검색 결과가 없어요.</p>
-              )}
+      {/* 검색·캡처저장·노트는 항상 서로 줄바꿈 없이 한 줄로 붙어서, 툴바 오른쪽 끝에
+          (노트창이 뜨는 칸 바로 위에) 함께 자리하도록 한 묶음으로 둔다. */}
+      <div className="ml-auto flex flex-nowrap items-center gap-2">
+        {/* search: 팝오버가 아니라 항상 상단 줄에 보이도록 */}
+        <div className="relative flex items-center gap-1">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              onSearch(query);
+            }}
+            className="flex flex-nowrap items-center gap-1"
+          >
+            <input
+              className="input h-8 w-28 py-1 text-xs sm:w-40"
+              placeholder="교재 내 검색"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <button className="btn-ghost shrink-0 px-2" type="submit" title="검색">
+              🔎
+            </button>
+          </form>
+          {query.trim() && (
+            <div className="absolute right-0 top-9 z-20 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+              <div className="max-h-48 space-y-1 overflow-auto">
+                {searchResults.map((r, i) => (
+                  <button
+                    key={i}
+                    className="block w-full rounded-lg px-2 py-1 text-left text-xs hover:bg-slate-100"
+                    onClick={() => {
+                      onJumpToResult(r.page);
+                      setQuery("");
+                    }}
+                  >
+                    <span className="font-semibold text-brand-700">{r.page}쪽</span> {r.snippet}
+                  </button>
+                ))}
+                {searchResults.length === 0 && (
+                  <p className="px-2 py-1 text-xs text-slate-400">검색 결과가 없어요.</p>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+
+        <button className="btn-ghost shrink-0 px-2" title="이 쪽 캡처 저장" onClick={onCapture}>
+          📷 캡처저장
+        </button>
+
+        <button
+          className={`btn-ghost shrink-0 px-2 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
+          title="노트창 보이기/숨기기"
+          onClick={onToggleNotes}
+        >
+          📝 노트
+        </button>
       </div>
-
-      <button className="btn-ghost px-2" title="이 쪽 캡처 저장" onClick={onCapture}>
-        📷 캡처저장
-      </button>
-
-      {/* 노트창 열고 닫기: 노트창이 화면 오른쪽에 뜨므로, 그 칸 바로 위에 오도록
-          맨 오른쪽 끝에 붙인다. */}
-      <button
-        className={`btn-ghost ml-auto px-2 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
-        title="노트창 보이기/숨기기"
-        onClick={onToggleNotes}
-      >
-        📝 노트
-      </button>
     </div>
   );
 }

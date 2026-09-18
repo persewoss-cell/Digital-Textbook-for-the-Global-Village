@@ -131,6 +131,12 @@ export function usePinchZoom({
       panRef.current = { x: t.clientX, y: t.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
     };
 
+    // 메모(노트)를 손가락으로 드래그해서 옮길 때는 그 터치를 화면 팬(스크롤)으로
+    // 취급하면 안 된다 — 터치 이벤트의 target은 손가락을 뗄 때까지 시작 지점(메모)에
+    // 고정되므로, 여기서 한 번만 확인하면 된다(NotesOverlay가 각 메모에 표시해 둔
+    // data-note-drag 속성으로 판단).
+    const isNoteDrag = (t: Touch) => !!(t.target as HTMLElement | null)?.closest("[data-note-drag]");
+
     // 일부 터치스크린/브라우저는 두 손가락으로 계속 누르고 있는 중에도 아주 짧은
     // 순간 손가락 하나를 "놓친" 것처럼(touches 개수가 잠깐 1개나 0개로) 잘못
     // 보고하는 경우가 있다. 이걸 그대로 "손을 뗐다"고 받아들여 핀치를 바로
@@ -167,6 +173,7 @@ export function usePinchZoom({
         startPinch(e.touches[0], e.touches[1]);
       } else if (e.touches.length === 1) {
         if (pinchRef.current) return; // 핀치 종료 유예 시간 중 — schedulePinchEnd가 처리
+        if (isNoteDrag(e.touches[0])) return;
         cancelPendingEnd();
         midRef.current = null;
         startPan(e.touches[0]);

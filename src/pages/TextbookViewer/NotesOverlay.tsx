@@ -73,6 +73,7 @@ export function NotesOverlay({
       {items.map((note) => (
         <div
           key={note.id}
+          data-note-drag={readOnly ? undefined : "true"}
           onPointerDown={(e) => handleNotePointerDown(e, note)}
           onPointerMove={handleNotePointerMove}
           onPointerUp={handleNotePointerUp}

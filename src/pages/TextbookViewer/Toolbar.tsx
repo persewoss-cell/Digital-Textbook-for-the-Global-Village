@@ -162,9 +162,13 @@ export function Toolbar({
         </button>
       </div>
 
+      <div className="mx-1 h-5 w-px bg-slate-200" />
+
       <span className="text-sm font-semibold text-slate-600">
         {currentPage} / {numPages}쪽
       </span>
+
+      <div className="mx-1 h-5 w-px bg-slate-200" />
 
       {/* zoom */}
       <div className="flex items-center gap-1">
@@ -176,11 +180,11 @@ export function Toolbar({
           ＋
         </button>
         <button
-          className={`btn-ghost px-2 ${magnifierMode ? "bg-brand-100 text-brand-700" : ""}`}
+          className={`btn-ghost px-2 text-xs ${magnifierMode ? "bg-brand-100 text-brand-700" : ""}`}
           title="부분만 크게 보기(돋보기)"
           onClick={onToggleMagnifier}
         >
-          🔍
+          🔍 확대
         </button>
         {zoom !== 1 && (
           <button className="btn-ghost px-2 text-xs" title="원래 크기로" onClick={onZoomReset}>
@@ -188,16 +192,6 @@ export function Toolbar({
           </button>
         )}
       </div>
-
-      <div className="mx-1 h-5 w-px bg-slate-200" />
-
-      <button
-        className={`btn-ghost px-2 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
-        title="노트창 보이기/숨기기"
-        onClick={onToggleNotes}
-      >
-        📝 노트
-      </button>
 
       {!readOnly && (
         <>
@@ -396,6 +390,16 @@ export function Toolbar({
 
       <button className="btn-ghost px-2" title="이 쪽 캡처 저장" onClick={onCapture}>
         📷 캡처저장
+      </button>
+
+      {/* 노트창 열고 닫기: 노트창이 화면 오른쪽에 뜨므로, 그 칸 바로 위에 오도록
+          맨 오른쪽 끝에 붙인다. */}
+      <button
+        className={`btn-ghost ml-auto px-2 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
+        title="노트창 보이기/숨기기"
+        onClick={onToggleNotes}
+      >
+        📝 노트
       </button>
     </div>
   );

@@ -65,7 +65,7 @@ export default function StudentJoinPage() {
 
       const textbook = await getFirstTextbookForGrade(room.grade);
       if (!textbook) {
-        setError("아직 이 학년에 등록된 교과서가 없어요. 선생님/관리자에게 문의하세요.");
+        setError("아직 이 학년에 등록된 교재가 없어요. 선생님/관리자에게 문의하세요.");
         setLoading(false);
         return;
       }

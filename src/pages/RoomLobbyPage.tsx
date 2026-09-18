@@ -14,9 +14,9 @@ export default function RoomLobbyPage() {
       <div className="mx-auto max-w-4xl px-4 py-10">
         <div className="mb-8 text-center">
           <div className="mb-2 text-5xl">🌍</div>
-          <h1 className="text-2xl font-extrabold text-brand-800">지구마을 디지털 교과서</h1>
+          <h1 className="text-2xl font-extrabold text-brand-800">지구마을 디지털 교재</h1>
           <p className="mt-1 text-sm text-slate-500">
-            선생님이 만든 반 방에 들어가서 디지털 교과서를 함께 봐요.
+            선생님이 만든 반 방에 들어가서 디지털 교재를 함께 봐요.
           </p>
         </div>
 

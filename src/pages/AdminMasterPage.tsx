@@ -164,14 +164,14 @@ function TextbooksSection() {
   };
 
   const remove = async (id: string) => {
-    if (!confirm("이 교과서 정보를 삭제할까요? (실제 PDF 파일은 남아있어요)")) return;
+    if (!confirm("이 교재 정보를 삭제할까요? (실제 PDF 파일은 남아있어요)")) return;
     await deleteTextbookDoc(id);
   };
 
   return (
     <div>
       <div className="card mb-6 p-4">
-        <h3 className="mb-1 font-semibold">새 교과서 등록</h3>
+        <h3 className="mb-1 font-semibold">새 교재 등록</h3>
         <p className="mb-3 text-xs text-slate-500">
           무료 요금제는 파일 저장 서비스(Storage)를 쓸 수 없어서, PDF 파일 자체는 이 화면에서 바로
           업로드할 수 없어요. 대신 <b>PDF 파일을 채팅으로 Claude에게 보내주시면</b> 프로젝트에 추가해
@@ -261,7 +261,7 @@ function TextbooksSection() {
         ))}
         {textbooks.length === 0 && (
           <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
-            아직 업로드된 교과서가 없어요.
+            아직 업로드된 교재가 없어요.
           </p>
         )}
       </div>
@@ -373,7 +373,7 @@ export default function AdminMasterPage() {
     <AppShell right={<button className="btn-ghost" onClick={handleExit}>관리자 나가기</button>}>
       <div className="mx-auto max-w-5xl">
         <h1 className="mb-1 text-xl font-bold">관리자 페이지</h1>
-        <p className="mb-6 text-sm text-slate-500">모든 반 방과 교과서를 관리할 수 있어요.</p>
+        <p className="mb-6 text-sm text-slate-500">모든 반 방과 교재를 관리할 수 있어요.</p>
 
         <div className="mb-6 flex gap-2 border-b border-slate-200">
           {(["rooms", "textbooks"] as const).map((t) => (
@@ -384,7 +384,7 @@ export default function AdminMasterPage() {
                 tab === t ? "border-brand-600 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-700"
               }`}
             >
-              {t === "rooms" ? "모든 방" : "교과서 관리"}
+              {t === "rooms" ? "모든 방" : "교재 관리"}
             </button>
           ))}
         </div>

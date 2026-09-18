@@ -20,7 +20,7 @@ export function AppShell({
     <div className="flex h-dvh flex-col">
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
         <Link to="/" className="font-bold text-brand-700">
-          🌍 지구마을 디지털 교과서
+          🌍 지구마을 디지털 교재
         </Link>
         <div className="flex items-center gap-3">
           {badge && (

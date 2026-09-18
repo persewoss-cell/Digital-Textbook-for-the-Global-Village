@@ -335,7 +335,7 @@ export default function RoomManagePage() {
               {room.grade}학년 {room.classNum}반 관리
             </h1>
             <p className="text-sm text-slate-500">
-              {room.teacherName} 선생님 · {textbook?.title ?? "교과서 없음"}
+              {room.teacherName} 선생님 · {textbook?.title ?? "교재 없음"}
             </p>
           </div>
           <div className="flex gap-2">
@@ -384,7 +384,7 @@ export default function RoomManagePage() {
           )}
           {participants.length > 0 && !textbook && (
             <p className="col-span-full rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-400">
-              이 학년에 등록된 교과서가 없어요.
+              이 학년에 등록된 교재가 없어요.
             </p>
           )}
         </div>

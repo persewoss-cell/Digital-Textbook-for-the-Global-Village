@@ -112,6 +112,14 @@ export interface AnnotationLayerHandle {
   /** 옆 쪽으로 넘어왔던 미리보기를 지운다(다시 이 쪽 밖으로 나갔거나, 드래그가
    * 끝나 커밋됐거나, 취소됐을 때). */
   clearExternalPreview: () => void;
+  /** 지우개가 경계를 넘어와 이 쪽 위에 있는 동안 매 프레임 불린다 - clientX/Y를
+   * 이 쪽 캔버스 기준으로 변환해 그 지점 주변을 실시간으로 지운다(아직 커밋은
+   * 안 함, 옆 쪽의 자기 지우개 드래프트처럼 동작). */
+  eraseExternalAt: (clientX: number, clientY: number, radius: number) => void;
+  /** 지우개 드래그가 끝났을 때 이 쪽에 남아있던 (경계 너머) 지우기를 실제로
+   * 커밋한다. 실제로 뭔가 지워졌으면 true를 돌려준다 - 되돌리기를 두 쪽 모두
+   * 하나의 동작으로 묶을 때 이 쪽도 포함해야 하는지 판단하는 데 쓴다. */
+  commitExternalErase: () => boolean;
 }
 
 const PENCIL_COLOR = "#52525b"; // 연필은 항상 회색 연필 느낌으로 고정
@@ -244,6 +252,10 @@ export const AnnotationLayer = forwardRef<
     eraserSize: number;
     readOnly: boolean;
     onDraw?: () => void;
+    /** 한 번의 사용자 동작(필기/지우개)이 실제로 이 쪽과 옆 쪽 양쪽 모두를 건드렸을
+     * 때 두 쪽 번호를 한꺼번에 알려준다. 되돌리기 버튼이 이 목록 전체를 한 번에
+     * 되돌려야, 경계를 넘나든 동작도 하나의 동작처럼 한 번에 되돌아간다. */
+    onCompoundDraw?: (pages: number[]) => void;
     /** 쪽을 넘겼다가 돌아와도 실행취소 기록이 사라지지 않도록, 쪽 번호별 기록을
      * 이 컴포넌트보다 오래 사는 부모(TextbookViewerPage)의 Map에 보관한다. */
     historyMap: Map<number, Stroke[][]>;
@@ -253,10 +265,11 @@ export const AnnotationLayer = forwardRef<
     /** 색펜(볼펜/형광펜/색연필/사인펜)의 굵기·투명도. 도형/연필에는 영향을 주지 않는다. */
     penWidth?: number;
     penAlpha?: number;
-    /** 두 쪽 보기에서 이 쪽의 옆(경계) 너머로 그은 부분을 넘겨줄 옆 쪽. boundaryFx는
-     * 이 쪽 기준 경계 위치(왼쪽 이웃이면 0, 오른쪽 이웃이면 1)다. 한 쪽 보기이거나
-     * 이 쪽이 스프레드의 끝이라 옆 쪽이 없으면 undefined. */
-    neighborAnnotation?: { boundaryFx: 0 | 1; getHandle: () => AnnotationLayerHandle | null };
+    /** 두 쪽 보기에서 이 쪽의 옆(경계) 너머로 그은/지운 부분을 넘겨줄 옆 쪽.
+     * boundaryFx는 이 쪽 기준 경계 위치(왼쪽 이웃이면 0, 오른쪽 이웃이면 1)다.
+     * page는 그 옆 쪽의 실제 쪽 번호(되돌리기를 두 쪽 다 걸치게 하는 데 씀). 한
+     * 쪽 보기이거나 이 쪽이 스프레드의 끝이라 옆 쪽이 없으면 undefined. */
+    neighborAnnotation?: { boundaryFx: 0 | 1; page: number; getHandle: () => AnnotationLayerHandle | null };
   }
 >(function AnnotationLayer(
   {
@@ -272,6 +285,7 @@ export const AnnotationLayer = forwardRef<
     eraserSize,
     readOnly,
     onDraw,
+    onCompoundDraw,
     historyMap,
     futureMap,
     persist = true,
@@ -288,12 +302,18 @@ export const AnnotationLayer = forwardRef<
   const shapeStart = useRef<[number, number] | null>(null);
   const shapeDraft = useRef<number[] | null>(null);
   const erasingDraft = useRef<Stroke[] | null>(null);
+  // 옆 쪽에서 넘어온 지우개가 이 쪽 위에서 지우는 중인 내용(옆 쪽의 erasingDraft와
+  // 같은 역할이지만, 이건 옆 쪽 캔버스가 이쪽 캔버스에 원격으로 지시해서 채운다).
+  const externalErasingDraft = useRef<Stroke[] | null>(null);
   const history = useRef<Stroke[][]>(getPageHistory(historyMap, page));
   const future = useRef<Stroke[][]>(getPageHistory(futureMap, page));
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   // 지금 그리는 중인 획이 옆 쪽으로 넘어가 그쪽에 실시간 미리보기를 띄워 둔 적이
   // 있는지 - 다시 이쪽으로 돌아오거나 손을 떼면 그 미리보기를 지워 줘야 한다.
   const neighborPreviewActiveRef = useRef(false);
+  // 이번 지우개 드래그가 옆 쪽도 건드렸는지 - 손을 뗄 때 옆 쪽 커밋도 같이
+  // 해야 하는지, 되돌리기를 두 쪽에 걸쳐 묶어야 하는지 판단하는 데 쓴다.
+  const neighborEraseTouchedRef = useRef(false);
 
   useEffect(() => {
     strokesRef.current = strokes;
@@ -373,6 +393,32 @@ export const AnnotationLayer = forwardRef<
       },
       clearExternalPreview: () => {
         redraw(strokesRef.current);
+      },
+      eraseExternalAt: (clientX, clientY, radius) => {
+        if (readOnly) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const [px, py] = toLocal(clientX, clientY);
+        externalErasingDraft.current = eraseAtPoint(
+          externalErasingDraft.current ?? strokesRef.current,
+          px,
+          py,
+          canvas.width,
+          canvas.height,
+          radius,
+        );
+        redraw(externalErasingDraft.current);
+      },
+      commitExternalErase: () => {
+        const next = externalErasingDraft.current;
+        externalErasingDraft.current = null;
+        if (!next) return false;
+        if (next.length !== strokesRef.current.length || next.some((s, i) => s !== strokesRef.current[i])) {
+          commit(next);
+          return true;
+        }
+        redraw(strokesRef.current);
+        return false;
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -461,6 +507,13 @@ export const AnnotationLayer = forwardRef<
         });
       }
     }
+    // 이 동작이 실제로 두 쪽에 걸쳐 그려졌으면, 되돌리기가 하나의 동작으로 두 쪽
+    // 모두를 한 번에 되돌릴 수 있도록 두 쪽 번호를 함께 알려준다. (개별 커밋마다
+    // onDraw가 이미 불렸지만 각자 자기 쪽 번호만 알므로, 마지막에 이걸로 덮어써야
+    // "이 동작은 두 쪽짜리"라는 사실이 남는다.)
+    if (selfRuns.length > 0 && otherRuns.length > 0) {
+      onCompoundDraw?.([page, neighborAnnotation.page]);
+    }
   };
 
   /** 아직 손을 떼지 않고 그리는 중인 획이 경계 너머로 넘어간 부분을 옆 쪽에
@@ -490,14 +543,32 @@ export const AnnotationLayer = forwardRef<
     }
   };
 
+  /** 지우개가 지금 이 쪽(fx가 0~1 안)인지 옆 쪽으로 넘어갔는지 보고, 이 쪽이면
+   * 평소처럼 지우고, 옆 쪽이면 그 쪽에 실시간으로 지워 달라고 넘긴다 - 드래그
+   * 하나가 경계를 여러 번 오가도 그때그때 맞는 쪽이 지워진다. */
+  const eraseAt = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current!;
+    const [px, py] = toLocal(clientX, clientY);
+    const fx = px / canvas.width;
+    const onSelfSide = !neighborAnnotation || (neighborAnnotation.boundaryFx === 1 ? fx <= 1 : fx >= 0);
+    if (onSelfSide) {
+      erasingDraft.current = eraseAtPoint(erasingDraft.current ?? strokes, px, py, canvas.width, canvas.height, eraserSize);
+      redraw(erasingDraft.current);
+      return;
+    }
+    const neighbor = neighborAnnotation!.getHandle();
+    if (neighbor) {
+      neighbor.eraseExternalAt(clientX, clientY, eraserSize);
+      neighborEraseTouchedRef.current = true;
+    }
+  };
+
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (readOnly || tool === "none") return;
     canvasRef.current?.setPointerCapture(e.pointerId);
     if (tool === "eraser") {
-      const [px, py] = toLocal(e.clientX, e.clientY);
-      const canvas = canvasRef.current!;
-      erasingDraft.current = eraseAtPoint(strokes, px, py, canvas.width, canvas.height, eraserSize);
-      redraw(erasingDraft.current);
+      neighborEraseTouchedRef.current = false;
+      eraseAt(e.clientX, e.clientY);
       return;
     }
     const [x, y] = toLocal(e.clientX, e.clientY);
@@ -513,11 +584,8 @@ export const AnnotationLayer = forwardRef<
     if (tool === "eraser") {
       setHoverPos({ x: e.clientX, y: e.clientY });
     }
-    if (tool === "eraser" && erasingDraft.current) {
-      const [px, py] = toLocal(e.clientX, e.clientY);
-      const canvas = canvasRef.current!;
-      erasingDraft.current = eraseAtPoint(erasingDraft.current, px, py, canvas.width, canvas.height, eraserSize);
-      redraw(erasingDraft.current);
+    if (tool === "eraser" && (erasingDraft.current || neighborEraseTouchedRef.current)) {
+      eraseAt(e.clientX, e.clientY);
       return;
     }
     if (isShapeTool(tool) && shapeStart.current) {
@@ -559,11 +627,25 @@ export const AnnotationLayer = forwardRef<
   };
 
   const handlePointerUp = () => {
-    if (tool === "eraser" && erasingDraft.current) {
-      const next = erasingDraft.current;
-      erasingDraft.current = null;
-      if (next.length !== strokes.length || next.some((s, i) => s !== strokes[i])) {
-        commit(next);
+    if (tool === "eraser") {
+      let selfChanged = false;
+      if (erasingDraft.current) {
+        const next = erasingDraft.current;
+        erasingDraft.current = null;
+        if (next.length !== strokes.length || next.some((s, i) => s !== strokes[i])) {
+          commit(next);
+          selfChanged = true;
+        }
+      }
+      let otherChanged = false;
+      if (neighborEraseTouchedRef.current) {
+        otherChanged = neighborAnnotation?.getHandle()?.commitExternalErase() ?? false;
+      }
+      neighborEraseTouchedRef.current = false;
+      // 지우개 드래그 하나가 이 쪽과 옆 쪽 필기를 동시에 지웠으면, 되돌리기가 한
+      // 번에 둘 다 되돌릴 수 있도록 두 쪽 번호를 함께 알려준다.
+      if (selfChanged && otherChanged && neighborAnnotation) {
+        onCompoundDraw?.([page, neighborAnnotation.page]);
       }
       return;
     }

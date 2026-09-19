@@ -146,10 +146,13 @@ export default function TextbookViewerPage() {
   // 올바르게 되돌리도록 전역 일련번호로 순서를 비교한다.
   const actionSeqRef = useRef(0);
   const nextActionSeq = () => ++actionSeqRef.current;
-  const lastDrawAction = useRef<{ seq: number; page: number } | null>(null);
+  // pages는 보통 한 쪽([n])이지만, 두 쪽 보기에서 필기/지우개가 경계를 넘나든
+  // 동작은 두 쪽 다([n, 옆쪽])를 담아서, 되돌리기 한 번으로 두 쪽 모두 되돌아가게 한다.
+  const lastDrawAction = useRef<{ seq: number; pages: number[] } | null>(null);
   const lastNoteAction = useRef<{ seq: number; page: number } | null>(null);
   const lastUndoneType = useRef<"note" | "draw" | null>(null);
   const lastUndonePage = useRef<number | null>(null);
+  const lastUndoneDrawPages = useRef<number[] | null>(null);
   const notesHistoryMapRef = useRef<Map<number, { seq: number; prev: PlacedNote[] }[]>>(new Map());
   const notesFutureMapRef = useRef<Map<number, { seq: number; next: PlacedNote[] }[]>>(new Map());
   // 타이핑/드래그처럼 연속으로 여러 번 호출되는 노트 편집은, 잠시 멈출 때까지 기다렸다가
@@ -513,11 +516,12 @@ export default function TextbookViewerPage() {
     setSearchResults(results.slice(0, 30));
   };
 
-  // 마지막으로 그린 쪽이 화면에서 넘어가 사라진 상태라면(이미 언마운트됨) 실행취소가
-  // 조용히 아무 효과도 없는 것처럼 보이므로, 그럴 땐 현재 보이는 쪽을 대상으로 한다.
-  const undoRedoTarget = () => {
-    const target = lastDrawAction.current?.page;
-    return target !== undefined && pageRefs.current.has(target) ? target : primaryPage;
+  // 마지막으로 그린 쪽들 중 화면에서 넘어가 사라진 게 있으면(이미 언마운트됨)
+  // 실행취소가 조용히 아무 효과도 없는 것처럼 보이므로, 남아있는 쪽만 대상으로
+  // 하고 하나도 안 남았으면 현재 보이는 쪽을 대상으로 한다.
+  const undoRedoTargets = (pages: number[] | undefined | null) => {
+    const alive = (pages ?? []).filter((p) => pageRefs.current.has(p));
+    return alive.length > 0 ? alive : [primaryPage];
   };
 
   // 필기(연필/색펜/도형/지우개)와 노트, 둘 중 더 최근에 한 일을 실행취소한다.
@@ -549,9 +553,12 @@ export default function TextbookViewerPage() {
     }
 
     if (drawAction) {
-      pageRefs.current.get(undoRedoTarget())?.undo();
+      // 경계를 넘나든 동작은 두 쪽에 걸쳐 커밋됐으므로, 두 쪽 모두 되돌려야
+      // 하나의 동작으로 온전히 되돌아간다.
+      const targets = undoRedoTargets(drawAction.pages);
+      targets.forEach((p) => pageRefs.current.get(p)?.undo());
       lastUndoneType.current = "draw";
-      lastUndonePage.current = undoRedoTarget();
+      lastUndoneDrawPages.current = targets;
     }
   };
 
@@ -575,8 +582,11 @@ export default function TextbookViewerPage() {
       lastUndoneType.current = null;
       return;
     }
-    pageRefs.current.get(undoRedoTarget())?.redo();
-    lastUndoneType.current = null;
+    if (lastUndoneType.current === "draw" && lastUndoneDrawPages.current) {
+      lastUndoneDrawPages.current.forEach((p) => pageRefs.current.get(p)?.redo());
+      lastUndoneType.current = null;
+      return;
+    }
   };
 
   // 사각형 영역(0-1 정규화 비율)이 화면에 최대한 꽉 차도록 확대하고 그 위치로 스크롤한다.
@@ -965,7 +975,10 @@ export default function TextbookViewerPage() {
                             eraserSize={eraserSize}
                             readOnly={readOnly}
                             onDraw={() => {
-                              lastDrawAction.current = { seq: nextActionSeq(), page: n };
+                              lastDrawAction.current = { seq: nextActionSeq(), pages: [n] };
+                            }}
+                            onCompoundDraw={(pages) => {
+                              lastDrawAction.current = { seq: nextActionSeq(), pages };
                             }}
                             historyMap={historyMapRef.current}
                             futureMap={futureMapRef.current}
@@ -984,10 +997,12 @@ export default function TextbookViewerPage() {
                                 ? idx === 0
                                   ? {
                                       boundaryFx: 1,
+                                      page: pagesToShow[1],
                                       getHandle: () => pageRefs.current.get(pagesToShow[1])?.getAnnotationHandle() ?? null,
                                     }
                                   : {
                                       boundaryFx: 0,
+                                      page: pagesToShow[0],
                                       getHandle: () => pageRefs.current.get(pagesToShow[0])?.getAnnotationHandle() ?? null,
                                     }
                                 : undefined

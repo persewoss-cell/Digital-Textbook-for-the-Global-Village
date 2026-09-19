@@ -36,6 +36,9 @@ interface BookPageProps {
   eraserSize: number;
   readOnly: boolean;
   onDraw?: () => void;
+  /** 한 번의 필기/지우개 동작이 이 쪽과 옆 쪽 양쪽을 다 건드렸을 때 두 쪽 번호를
+   * 한꺼번에 알려준다 - 되돌리기가 그 동작을 한 번에 두 쪽 다 되돌릴 수 있게. */
+  onCompoundDraw?: (pages: number[]) => void;
   historyMap: Map<number, Stroke[][]>;
   futureMap: Map<number, Stroke[][]>;
   /** false면 필기를 서버에 저장/조회하지 않는다 (교재 체험 모드용). */
@@ -56,7 +59,7 @@ interface BookPageProps {
   onRequestDeselectTool?: () => void;
   /** 두 쪽 보기에서 옆 쪽으로 넘어간 획을 이어 그릴 수 있도록 옆 쪽의
    * AnnotationLayer를 알려준다. 한 쪽 보기거나 스프레드 끝이면 undefined. */
-  neighborAnnotation?: { boundaryFx: 0 | 1; getHandle: () => AnnotationLayerHandle | null };
+  neighborAnnotation?: { boundaryFx: 0 | 1; page: number; getHandle: () => AnnotationLayerHandle | null };
   onActivateZone: (
     zone: ActivityZone,
     el: HTMLDivElement,
@@ -84,6 +87,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     eraserSize,
     readOnly,
     onDraw,
+    onCompoundDraw,
     historyMap,
     futureMap,
     persist,
@@ -242,6 +246,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
         eraserSize={eraserSize}
         readOnly={readOnly}
         onDraw={onDraw}
+        onCompoundDraw={onCompoundDraw}
         historyMap={historyMap}
         futureMap={futureMap}
         persist={persist}

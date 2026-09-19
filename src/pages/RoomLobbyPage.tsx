@@ -25,22 +25,25 @@ export default function RoomLobbyPage() {
 
         <div className="mx-auto mb-6 flex max-w-md flex-col gap-2">
           <div className="flex gap-2">
-            <button className="btn-primary flex-1" onClick={() => navigate("/create-room")}>
+            <button
+              className="btn-primary flex-1 whitespace-nowrap px-2 text-xs sm:px-4 sm:text-sm"
+              onClick={() => navigate("/create-room")}
+            >
               + 선생님: 방 만들기
             </button>
-            <Link to="/admin" className="btn-secondary flex-1 text-center">
+            <Link to="/admin" className="btn-secondary flex-1 whitespace-nowrap px-2 text-center text-xs sm:px-4 sm:text-sm">
               관리자
             </Link>
           </div>
           <div className="flex gap-2">
             <Link
               to="/preview"
-              className="btn flex-1 bg-orange-500 text-center text-white hover:bg-orange-600"
+              className="btn flex-1 whitespace-nowrap bg-orange-500 px-2 text-center text-xs text-white hover:bg-orange-600 sm:px-4 sm:text-sm"
             >
               📖 학년별 교재 체험하기
             </Link>
             <button
-              className="btn flex-1 bg-sky-500 text-white hover:bg-sky-600"
+              className="btn flex-1 whitespace-nowrap bg-sky-500 px-2 text-xs text-white hover:bg-sky-600 sm:px-4 sm:text-sm"
               onClick={() => setShowGuide(true)}
             >
               📘 교재 사용 방법
@@ -61,13 +64,13 @@ export default function RoomLobbyPage() {
               </div>
               <div className="flex gap-1.5">
                 <button
-                  className="btn-primary flex-1 px-1 text-xs"
+                  className="btn-primary flex-1 whitespace-nowrap px-1 text-[11px] sm:text-xs"
                   onClick={() => navigate(`/room/${r.id}/join`)}
                 >
                   학생
                 </button>
                 <button
-                  className="btn-secondary flex-1 px-1 text-xs"
+                  className="btn-secondary flex-1 whitespace-nowrap px-1 text-[11px] sm:text-xs"
                   onClick={() => navigate(`/room/${r.id}/manage`)}
                 >
                   선생님

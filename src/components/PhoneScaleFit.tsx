@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
-// 이보다 좁으면 "핸드폰"으로 보고 축소 모드를 적용한다. 태블릿 세로 모드(보통
-// 768px 이상)는 이미 반응형 레이아웃이 괜찮아서 건드리지 않는다.
+// 짧은 쪽(가로 모드면 높이, 세로 모드면 너비)이 이보다 좁으면 "핸드폰"으로 보고
+// 축소 모드를 적용한다 - 가로/세로 어느 방향으로 들어도 핸드폰은 짧은 쪽이 늘
+// 이 정도(보통 320~430px)라서, 방향에 관계없이 같은 기준으로 판단할 수 있다.
+// 태블릿은 세로로 들어도 보통 768px 이상이라 영향받지 않는다.
 const PHONE_BREAKPOINT = 700;
 // 안쪽 내용은 항상 이 크기(태블릿 가로 화면 하나)로 렌더링해 두고 화면에 맞게
 // CSS로 축소만 한다 - 글씨/버튼/사각박스 크기 등 모든 비율이 태블릿과 똑같이
@@ -9,18 +11,40 @@ const PHONE_BREAKPOINT = 700;
 const REFERENCE_WIDTH = 1024;
 const REFERENCE_HEIGHT = 768;
 
+// 모바일 브라우저는 주소창이 나타났다 사라졌다 하면서 window.innerWidth/Height가
+// 화면에 실제로 보이는 크기와 다르게 보고될 때가 있다(예: 주소창이 보이는데도
+// 주소창이 없을 때 기준 높이를 돌려주는 경우) - 그러면 축소 배율을 실제보다 크게
+// 잡아서 화면 아래가 잘리거나 다른 요소와 겹쳐 보이는 문제가 생긴다.
+// window.visualViewport는 실제로 지금 보이는 영역을 더 정확히 알려주므로 있으면
+// 그걸 우선 쓴다.
+function readViewport() {
+  const vv = window.visualViewport;
+  if (vv) return { w: vv.width, h: vv.height };
+  return { w: window.innerWidth, h: window.innerHeight };
+}
+
+export function isPhoneViewport(w?: number, h?: number) {
+  const v = w !== undefined && h !== undefined ? { w, h } : readViewport();
+  return Math.min(v.w, v.h) < PHONE_BREAKPOINT;
+}
+
 function usePhoneScale() {
-  const [viewport, setViewport] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  const [viewport, setViewport] = useState(readViewport);
   useEffect(() => {
-    const update = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+    const update = () => setViewport(readViewport());
+    update();
     window.addEventListener("resize", update);
     window.addEventListener("orientationchange", update);
+    window.visualViewport?.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("scroll", update);
     return () => {
       window.removeEventListener("resize", update);
       window.removeEventListener("orientationchange", update);
+      window.visualViewport?.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("scroll", update);
     };
   }, []);
-  const isPhone = viewport.w < PHONE_BREAKPOINT;
+  const isPhone = Math.min(viewport.w, viewport.h) < PHONE_BREAKPOINT;
   const scale = isPhone ? Math.min(viewport.w / REFERENCE_WIDTH, viewport.h / REFERENCE_HEIGHT) : 1;
   return { isPhone, scale, viewport };
 }
@@ -35,9 +59,10 @@ export function usePhoneScaleHeight() {
 }
 
 /**
- * 핸드폰처럼 화면이 좁을 때, 반응형으로 새로 배치하는 대신 태블릿/PC 레이아웃을
- * 통째로 줄여서 그대로 보여준다("아주 작게 보이더라도 태블릿에 보이는 그대로").
- * 화면이 좁지 않으면(태블릿/PC) 아무 것도 하지 않고 그대로 렌더링한다.
+ * 핸드폰처럼 화면이 좁을 때(세로/가로 모두), 반응형으로 새로 배치하는 대신
+ * 태블릿/PC 레이아웃을 통째로 줄여서 그대로 보여준다("아주 작게 보이더라도
+ * 태블릿에 보이는 그대로"). 화면이 좁지 않으면(태블릿/PC) 아무 것도 하지 않고
+ * 그대로 렌더링한다.
  */
 export function PhoneScaleFit({ children }: { children: ReactNode }) {
   const { isPhone, scale, viewport } = usePhoneScale();

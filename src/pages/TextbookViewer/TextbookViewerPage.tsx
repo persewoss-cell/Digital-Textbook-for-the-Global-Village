@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { AppShell } from "@/components/AppShell";
-import { PhoneScaleFit } from "@/components/PhoneScaleFit";
+import { PhoneScaleFit, isPhoneViewport } from "@/components/PhoneScaleFit";
 import {
   getProgress,
   getTextbook,
@@ -116,11 +116,13 @@ export default function TextbookViewerPage() {
 
   // 태블릿처럼 화면이 좁을 때는 목차 패널이 교재가 보일 자리를 너무 많이 차지해서
   // 교재 주변에 회색 여백이 크게 남는다. 넓은 화면(데스크톱)에서는 기본으로 열어 두고,
-  // 좁은 화면에서는 기본으로 닫아서 교재가 최대한 크게 보이게 하고, 필요하면 툴바에서
-  // 언제든 다시 열 수 있게 한다. 노트창은 기본으로 켜져 있고 툴바의 노트 버튼으로
-  // 여닫는다(메모 추가는 노트창 안의 "+ 메모 추가" 버튼으로).
-  const [showToc, setShowToc] = useState(() => window.innerWidth >= 1024);
-  const [showNotes, setShowNotes] = useState(true);
+  // 좁은 화면(태블릿)에서는 기본으로 닫아서 교재가 최대한 크게 보이게 하고, 필요하면
+  // 툴바에서 언제든 다시 열 수 있게 한다. 핸드폰(태블릿 레이아웃을 통째로 축소해서
+  // 보여주는 PhoneScaleFit 모드)에서는 반대로 목차를 기본으로 열고 노트창은 닫아
+  // 둔다 - 화면이 작아 노트창까지 펼치면 교재가 너무 작게 보이고, 처음 들어왔을 때
+  // 어디로 이동할지부터 볼 수 있는 목차가 더 유용하다.
+  const [showToc, setShowToc] = useState(() => isPhoneViewport() || window.innerWidth >= 1024);
+  const [showNotes, setShowNotes] = useState(() => !isPhoneViewport());
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);

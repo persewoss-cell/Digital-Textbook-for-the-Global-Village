@@ -421,14 +421,23 @@ export default function TextbookViewerPage() {
   const boxHeight = boxWidth * aspect;
   const spreadWidth = boxWidth * layoutPageCount + PAGE_GAP * (layoutPageCount - 1);
 
+  // 선생님 모니터링 화면(RoomManagePage)의 썸네일이 학생이 지금 보고 있거나 방금
+  // 뭔가를 한 쪽을 실시간으로 보여줄 수 있도록, 그때그때 실제 쪽 번호로 진도를
+  // 갱신한다. 두 쪽 보기여도 짝수 쪽 시작 번호가 아니라 실제로 활동이 일어난
+  // 쪽(홀수일 수도 있음) 그대로 저장해야, 학생이 오른쪽(홀수) 쪽에서 필기해도
+  // 선생님 화면이 그쪽으로 바로 넘어가 보여준다.
+  const touchProgressPage = (page: number) => {
+    if (!readOnly && effectiveUid && textbookId) {
+      void updateProgress(effectiveUid, textbookId, page, numPages);
+    }
+  };
+
   const animateTo = (page: number) => {
     setPageOpacity(0);
     setTimeout(() => {
       setCurrentPage(page);
       setPageOpacity(1);
-      if (!readOnly && effectiveUid && textbookId) {
-        void updateProgress(effectiveUid, textbookId, page, numPages);
-      }
+      touchProgressPage(page);
     }, 120);
   };
 
@@ -754,6 +763,7 @@ export default function TextbookViewerPage() {
     setActiveNoteId(id);
     persistNotesForPage(page, next, true);
     setTool("none"); // 한 번 찍으면 자동으로 노트 도구가 꺼짐 (계속 새 메모가 생기는 것 방지)
+    touchProgressPage(page);
   };
   const handleSelectNote = (page: number, id: string) => {
     setActiveNotePage(page);
@@ -775,6 +785,9 @@ export default function TextbookViewerPage() {
     persistNotesForPage(activeNotePage, next);
   };
   const handleMoveNote = (page: number, id: string, x: number, y: number) => {
+    // 드래그 한 번에 pointermove마다 여러 번 불리므로, 여기서는 진도(lastPage)를
+    // 매번 갱신하지 않는다(Firestore에 너무 자주 쓰게 됨) - 놓았을 때 결과가
+    // 남는 정도로 충분하고, 어차피 노트를 만들거나 지울 때 이미 갱신된다.
     touchNoteEditSession(page);
     const current = notesByPage.get(page) ?? [];
     const next = current.map((n) => (n.id === id ? { ...n, x, y } : n));
@@ -792,6 +805,7 @@ export default function TextbookViewerPage() {
     setNotesByPage((prev) => new Map(prev).set(page, next));
     if (activeNoteId === id) setActiveNoteId(null);
     persistNotesForPage(page, next, true);
+    touchProgressPage(page);
   };
   const handleDeleteNote = (id: string) => handleDeleteNoteOnPage(activeNotePage, id);
 
@@ -976,9 +990,11 @@ export default function TextbookViewerPage() {
                             readOnly={readOnly}
                             onDraw={() => {
                               lastDrawAction.current = { seq: nextActionSeq(), pages: [n] };
+                              touchProgressPage(n);
                             }}
                             onCompoundDraw={(pages) => {
                               lastDrawAction.current = { seq: nextActionSeq(), pages };
+                              touchProgressPage(pages[pages.length - 1] ?? n);
                             }}
                             historyMap={historyMapRef.current}
                             futureMap={futureMapRef.current}

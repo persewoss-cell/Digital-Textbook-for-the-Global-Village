@@ -885,6 +885,8 @@ export default function TextbookViewerPage() {
                     page={0}
                     renderWidth={Math.max(300, containerSize.w - CONTAINER_PADDING * 2)}
                     renderHeight={Math.max(300, containerSize.h - CONTAINER_PADDING * 2)}
+                    displayWidth={Math.max(300, containerSize.w - CONTAINER_PADDING * 2)}
+                    displayHeight={Math.max(300, containerSize.h - CONTAINER_PADDING * 2)}
                     tool={tool === "note" ? "none" : tool}
                     color={color}
                     eraserSize={eraserSize}

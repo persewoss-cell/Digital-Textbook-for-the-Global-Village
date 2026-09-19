@@ -63,7 +63,7 @@ export interface PenStyleDef {
   alpha: number;
 }
 export const PEN_STYLES: PenStyleDef[] = [
-  { id: "ballpoint", label: "볼펜", width: 2.5, alpha: 1 },
+  { id: "ballpoint", label: "볼펜", width: 1.8, alpha: 1 },
   { id: "marker", label: "사인펜", width: 5, alpha: 1 },
   { id: "colorPencil", label: "색연필", width: 3.5, alpha: 0.8 },
   { id: "highlighter", label: "형광펜", width: 14, alpha: 0.35 },

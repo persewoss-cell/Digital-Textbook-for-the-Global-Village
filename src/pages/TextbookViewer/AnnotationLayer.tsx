@@ -145,15 +145,21 @@ export const AnnotationLayer = forwardRef<
     textbookId: string;
     page: number;
     /** 캔버스 자체 해상도로 쓸 크기(줌과 무관하게 상한이 있음 - 부모가
-     * RENDER_ZOOM_CEILING 기준으로 계산해 넘겨준다). 실제 화면에 보여줄 크기는
-     * 캔버스가 className="absolute inset-0"로 부모 쪽 div(width/height가 boxWidth/
-     * boxHeight로 줌에 따라 계속 바뀜)에 꽉 차게 붙어서 CSS로만 늘어나고 줄어든다.
-     * 손가락 제스처로 줌이 계속 바뀔 때마다 이 값 기준으로 캔버스를 다시
-     * 그리면(지우고 모든 획을 다시 그림) 매 프레임 무거운 작업이 끼어들어 뚝뚝
-     * 끊기므로, 실제로 다시 그리는 건 이 상한 안에서만 하고 그 이상은 CSS 확대로
-     * 매끄럽게 처리한다(PdfPageCanvas의 renderWidth/displayWidth 분리와 같은 원리). */
+     * RENDER_ZOOM_CEILING 기준으로 계산해 넘겨준다). 손가락 제스처로 줌이 계속
+     * 바뀔 때마다 이 값 기준으로 캔버스를 다시 그리면(지우고 모든 획을 다시 그림)
+     * 매 프레임 무거운 작업이 끼어들어 뚝뚝 끊기므로, 실제로 다시 그리는 건 이
+     * 상한 안에서만 하고 그 이상은 CSS 확대로 매끄럽게 처리한다(PdfPageCanvas의
+     * renderWidth/displayWidth 분리와 같은 원리). */
     renderWidth: number;
     renderHeight: number;
+    /** 실제로 화면에 보여줄 크기(줌에 따라 계속 바뀜). <canvas>는 img처럼 대체
+     * 요소라서 className="absolute inset-0"만으로는 부모 div 크기에 맞춰 늘어나지
+     * 않고 자기 raster 크기(renderWidth/renderHeight) 그대로 표시돼 버린다 - 그래서
+     * PdfPageCanvas와 똑같이 style의 width/height로 명시적으로 지정해 줘야 한다.
+     * 이게 빠져 있으면 필기 캔버스가 PDF와 다른 크기로 보여서, 쓴 글씨의 위치가
+     * 어긋나고 줌에 비례해 커지지도 않는다. */
+    displayWidth: number;
+    displayHeight: number;
     tool: DrawTool | ShapeTool | "none";
     color: string;
     eraserSize: number;
@@ -176,6 +182,8 @@ export const AnnotationLayer = forwardRef<
     page,
     renderWidth,
     renderHeight,
+    displayWidth,
+    displayHeight,
     tool,
     color,
     eraserSize,
@@ -281,7 +289,7 @@ export const AnnotationLayer = forwardRef<
     ];
   };
 
-  const strokeWidth = tool === "colorPen" ? penWidth : isShapeTool(tool) ? 2.5 : 2;
+  const strokeWidth = tool === "colorPen" ? penWidth : isShapeTool(tool) ? 2.5 : 1.4;
   const strokeAlpha = tool === "colorPen" ? penAlpha : 1;
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -374,6 +382,8 @@ export const AnnotationLayer = forwardRef<
         draggable={false}
         onDragStart={(e) => e.preventDefault()}
         style={{
+          width: displayWidth,
+          height: displayHeight,
           touchAction: interactive ? "none" : "auto",
           pointerEvents: interactive ? "auto" : "none",
           userSelect: "none",

@@ -71,6 +71,7 @@ export function ActivityZoneOverlay({
                 {armed && (
                   <button
                     type="button"
+                    data-no-pan="true"
                     className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full bg-orange-500 text-xl text-white shadow-lg"
                     onPointerDown={(e) => e.stopPropagation()}
                     onPointerUp={(e) => {
@@ -87,6 +88,7 @@ export function ActivityZoneOverlay({
             <div
               role={interactive ? "button" : undefined}
               title="눌러서 이 부분 확대해서 보기"
+              data-no-pan="true"
               className={interactive ? "absolute cursor-zoom-in" : "absolute"}
               style={{ ...RectStyle(zone.trigger), pointerEvents: interactive ? "auto" : "none" }}
               onPointerEnter={(e) => {

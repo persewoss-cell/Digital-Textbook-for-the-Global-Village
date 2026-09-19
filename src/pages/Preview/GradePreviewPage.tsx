@@ -80,7 +80,6 @@ function GradeCoverCard({
       </div>
       <div>
         <p className="text-lg font-bold text-slate-800">{grade}학년</p>
-        <p className="text-xs text-slate-500">{textbook?.title ?? "-"}</p>
       </div>
     </button>
   );
@@ -113,7 +112,7 @@ export default function GradePreviewPage() {
     >
       <div className="mx-auto max-w-2xl">
         <div className="mb-6 text-center">
-          <h1 className="text-xl font-bold">학년별 교재 체험하기</h1>
+          <h1 className="text-xl font-bold">지구마을 시리즈 디지털 교재 체험하기</h1>
           <p className="mt-1 text-sm text-slate-500">
             학년을 골라 학생처럼 디지털 교재를 둘러볼 수 있어요. 필기와 메모는 저장되지 않아요.
           </p>

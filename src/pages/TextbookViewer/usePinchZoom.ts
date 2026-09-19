@@ -319,44 +319,80 @@ export function usePinchZoom({
     return () => el.removeEventListener("wheel", onWheel);
   }, [scrollEl, contentEl, minZoom, maxZoom, setZoom]);
 
-  // PC(마우스)에서도 태블릿의 한 손가락 팬처럼, 교재 위 빈 곳을 눌러서 그대로
-  // 드래그하면 그 방향대로 스크롤되게 한다. 활동 확대 아이콘/번호나 메모처럼 그
-  // 자리에서 뭔가를 해야 하는 요소들은 이미 자기 pointerdown에서 stopPropagation을
-  // 부르고 있어서(ActivityZoneOverlay, NotesOverlay 등), 그런 요소를 누를 때는 이
-  // 리스너까지 이벤트가 올라오지 않아 자연스럽게 드래그팬이 시작되지 않는다.
+  // PC(마우스)에서 교재 위 아무 곳이나 누른 채 위아래로 드래그하면, 눌렀던 그
+  // 지점을 중심으로 확대/축소된다(위로 끌면 확대, 아래로 끌면 축소) - 컨트롤 키
+  // 없이도 트랙패드 핀치줌과 똑같은 방식으로 동작한다. 활동 확대 아이콘/번호나
+  // 메모처럼 그 자리에서 뭔가를 해야 하는 요소들은 data-no-pan(또는
+  // data-note-drag) 표시를 달아 두고 여기서 .closest()로 걸러서, 그런 요소를
+  // 누르면 이 드래그줌이 아예 시작되지 않게 한다. (그런 요소들은 자기
+  // pointerdown에서 React의 stopPropagation을 부르지만, 이 리스너는
+  // addEventListener로 직접 붙인 네이티브 리스너라 실제 DOM 버블 단계에서 React가
+  // stopPropagation을 처리하기 전에 이미 실행돼 버린다 - 그래서 별도로 걸러야
+  // 한다.) 추가로, 어떤 이유로든 pointerup을 놓쳐 드래그 상태가 남아 있더라도
+  // 마우스를 움직일 때마다 실제로 버튼이 눌려 있는지(e.buttons) 확인해서, 눌려
+  // 있지 않으면 바로 정리한다 - 확대 아이콘을 눌러 이동한 뒤 버튼 없이 마우스만
+  // 움직여도 화면이 따라 움직이던 문제의 안전장치.
   useEffect(() => {
-    if (!scrollEl) return;
+    if (!scrollEl || !contentEl) return;
     const el = scrollEl;
-    // 마우스를 올렸을 때 "여기를 잡고 움직일 수 있다"는 걸 보여주는 기본 커서.
-    // 도구가 선택돼 있으면(그림을 그릴 때) grab 커서를 보이지 않는다.
-    el.style.cursor = enabled ? "grab" : "";
+    el.style.cursor = enabled ? "ns-resize" : "";
 
     const DRAG_THRESHOLD = 4;
-    let down: { x: number; y: number; scrollLeft: number; scrollTop: number } | null = null;
+    const ZOOM_SENSITIVITY = 0.006;
+    let down: { x: number; y: number; startZoom: number } | null = null;
     let dragging = false;
+
+    const commitZoom = (next: number) => {
+      pendingZoomRef.current = next;
+      if (zoomRafRef.current === 0) {
+        zoomRafRef.current = requestAnimationFrame(() => {
+          zoomRafRef.current = 0;
+          if (pendingZoomRef.current !== null) {
+            setZoom(pendingZoomRef.current);
+            pendingZoomRef.current = null;
+          }
+        });
+      }
+    };
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.pointerType !== "mouse" || e.button !== 0 || !enabledRef.current) return;
-      down = { x: e.clientX, y: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.("[data-no-pan], [data-note-drag]")) return;
+      down = { x: e.clientX, y: e.clientY, startZoom: zoomRef.current };
       dragging = false;
     };
     const onPointerMove = (e: PointerEvent) => {
       if (!down) return;
+      if (!(e.buttons & 1)) {
+        down = null;
+        dragging = false;
+        el.style.cursor = enabledRef.current ? "ns-resize" : "";
+        return;
+      }
       const dx = e.clientX - down.x;
       const dy = e.clientY - down.y;
       if (!dragging) {
         if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
         dragging = true;
-        el.style.cursor = "grabbing";
+        // 드래그를 시작한 그 지점을 확대/축소 중심으로 고정한다 - 드래그하는
+        // 동안 마우스가 움직여도 이 중심은 바뀌지 않는다.
+        const rect = contentEl.getBoundingClientRect();
+        const fx = rect.width > 0 ? (down.x - rect.left) / rect.width : 0.5;
+        const fy = rect.height > 0 ? (down.y - rect.top) / rect.height : 0.5;
+        pinchRef.current = { startDistance: 0, startZoom: down.startZoom, fx, fy };
+        midRef.current = { x: down.x, y: down.y };
       }
       e.preventDefault();
-      el.scrollLeft = down.scrollLeft - dx;
-      el.scrollTop = down.scrollTop - dy;
+      // 위로 끌면(dy<0) 확대, 아래로 끌면(dy>0) 축소.
+      const factor = Math.exp(-dy * ZOOM_SENSITIVITY);
+      const next = Math.min(maxZoom, Math.max(minZoom, down.startZoom * factor));
+      commitZoom(next);
     };
     const endDrag = () => {
       down = null;
       dragging = false;
-      el.style.cursor = enabledRef.current ? "grab" : "";
+      el.style.cursor = enabledRef.current ? "ns-resize" : "";
     };
 
     el.addEventListener("pointerdown", onPointerDown);
@@ -370,5 +406,5 @@ export function usePinchZoom({
       window.removeEventListener("pointerup", endDrag);
       window.removeEventListener("pointercancel", endDrag);
     };
-  }, [scrollEl, enabled]);
+  }, [scrollEl, contentEl, enabled, minZoom, maxZoom, setZoom]);
 }

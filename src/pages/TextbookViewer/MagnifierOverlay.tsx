@@ -51,6 +51,7 @@ export function MagnifierOverlay({
   return (
     <div
       ref={elRef}
+      data-no-pan="true"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

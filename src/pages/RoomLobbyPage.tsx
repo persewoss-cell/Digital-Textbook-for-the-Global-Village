@@ -64,7 +64,7 @@ export default function RoomLobbyPage() {
                   className="btn-primary flex-1 px-1 text-xs"
                   onClick={() => navigate(`/room/${r.id}/join`)}
                 >
-                  학생 참여
+                  학생
                 </button>
                 <button
                   className="btn-secondary flex-1 px-1 text-xs"

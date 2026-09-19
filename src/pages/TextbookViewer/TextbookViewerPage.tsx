@@ -501,17 +501,34 @@ export default function TextbookViewerPage() {
   // 사각형 영역(0-1 정규화 비율)이 화면에 최대한 꽉 차도록 확대하고 그 위치로 스크롤한다.
   // 돋보기로 직접 그린 영역과, 활동 단계(준비하기/활동하기 등) 라벨을 눌러 자동으로
   // 잡은 영역 모두 이 함수를 공유해서 쓴다.
-  const zoomToRect = (w: number, h: number, el: HTMLElement) => {
+  //
+  // align이 있으면(두쪽 보기에서 한쪽만 확대할 때) 그 쪽의 책등 반대쪽 가장자리를 화면
+  // 가장자리에 맞춰서, 옆 쪽은 아예 화면 밖으로 밀려나고 이 쪽 하나가 화면 가로를 꽉
+  // 채우게 한다("left"=왼쪽 쪽이라 오른쪽 끝을, "right"=오른쪽 쪽이라 왼쪽 끝을 책등에
+  // 맞춤). 세로는 확대한 부분이 가운데 오도록 스크롤한다. align이 없으면(직접 그린
+  // 돋보기 영역처럼 어느 한쪽에 속한다고 단정할 수 없을 때) 기존처럼 그냥 가운데로.
+  const zoomToRect = (w: number, h: number, el: HTMLElement, align?: "left" | "right") => {
     // 이 영역이 화면에 꽉 차도록 하는 배율은 현재 줌과 무관하게 "1 / 영역의 비율"이어야
     // 한다 (현재 줌을 또 곱하면 과도하게 확대됨).
     const targetZoom = Math.min(MAX_ZOOM, 1 / Math.max(w, h));
     setZoom(targetZoom);
     // 확대로 인해 레이아웃 크기가 바뀐 뒤(2프레임 대기) 정확한 위치로 스크롤한다.
-    // behavior:"smooth"로 스크롤을 시작한 채 바로 오버레이를 없애면 애니메이션이
-    // 중간에 끊겨 위치가 살짝 어긋나 보이므로, 즉시 이동(auto)으로 스크롤을 끝낸다.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+        const scrollEl = scrollRef.current;
+        if (!align || !scrollEl) {
+          el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+          return;
+        }
+        const pageEl = (el.closest(".shadow-inner") as HTMLElement | null) ?? el;
+        const containerRect = scrollEl.getBoundingClientRect();
+        const pageRect = pageEl.getBoundingClientRect();
+        const zoneRect = el.getBoundingClientRect();
+        const deltaX =
+          align === "left" ? pageRect.left - containerRect.left : pageRect.right - containerRect.right;
+        const deltaY = zoneRect.top + zoneRect.height / 2 - (containerRect.top + containerRect.height / 2);
+        scrollEl.scrollLeft += deltaX;
+        scrollEl.scrollTop += deltaY;
       });
     });
   };
@@ -522,20 +539,13 @@ export default function TextbookViewerPage() {
   };
 
   const handleActivateZone = (zone: ActivityZone, el: HTMLDivElement, pageNumber: number) => {
-    // 두쪽 보기에서는 옆 쪽이 함께 보여서 확대해도 화면을 다 못 채우고 애매하게 보이니,
-    // 확대할 쪽 하나만 보이는 한쪽 보기로 바꾼 뒤(레이아웃이 다시 그려질 시간을 준 다음)
-    // 확대·스크롤한다.
-    if (viewMode === "spread") {
-      setViewMode("single");
-      setCurrentPage(pageNumber);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          zoomToRect(zone.target.w, zone.target.h, el);
-        });
-      });
-      return;
-    }
-    zoomToRect(zone.target.w, zone.target.h, el);
+    const align =
+      viewMode === "spread" && pagesToShow.length === 2
+        ? pageNumber === spreadStart(pageNumber)
+          ? "left"
+          : "right"
+        : undefined;
+    zoomToRect(zone.target.w, zone.target.h, el, align);
   };
 
   const handleCapture = () => {

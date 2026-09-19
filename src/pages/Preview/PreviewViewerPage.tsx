@@ -388,12 +388,25 @@ export default function PreviewViewerPage() {
     lastUndoneType.current = null;
   };
 
-  const zoomToRect = (w: number, h: number, el: HTMLElement) => {
+  const zoomToRect = (w: number, h: number, el: HTMLElement, align?: "left" | "right") => {
     const targetZoom = Math.min(MAX_ZOOM, 1 / Math.max(w, h));
     setZoom(targetZoom);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+        const scrollEl = scrollRef.current;
+        if (!align || !scrollEl) {
+          el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+          return;
+        }
+        const pageEl = (el.closest(".shadow-inner") as HTMLElement | null) ?? el;
+        const containerRect = scrollEl.getBoundingClientRect();
+        const pageRect = pageEl.getBoundingClientRect();
+        const zoneRect = el.getBoundingClientRect();
+        const deltaX =
+          align === "left" ? pageRect.left - containerRect.left : pageRect.right - containerRect.right;
+        const deltaY = zoneRect.top + zoneRect.height / 2 - (containerRect.top + containerRect.height / 2);
+        scrollEl.scrollLeft += deltaX;
+        scrollEl.scrollTop += deltaY;
       });
     });
   };
@@ -404,17 +417,13 @@ export default function PreviewViewerPage() {
   };
 
   const handleActivateZone = (zone: ActivityZone, el: HTMLDivElement, pageNumber: number) => {
-    if (viewMode === "spread") {
-      setViewMode("single");
-      setCurrentPage(pageNumber);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          zoomToRect(zone.target.w, zone.target.h, el);
-        });
-      });
-      return;
-    }
-    zoomToRect(zone.target.w, zone.target.h, el);
+    const align =
+      viewMode === "spread" && pagesToShow.length === 2
+        ? pageNumber === spreadStart(pageNumber)
+          ? "left"
+          : "right"
+        : undefined;
+    zoomToRect(zone.target.w, zone.target.h, el, align);
   };
 
   const handleCapture = () => {

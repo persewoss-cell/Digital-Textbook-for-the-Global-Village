@@ -22,10 +22,12 @@ interface BookPageProps {
   pageNumber: number;
   boxWidth: number;
   boxHeight: number;
-  /** 확대(zoom)와 무관하게 이 쪽이 화면에서 가장 커질 수 있는 크기. PdfPageCanvas가
-   * 이 크기 기준으로 한 번만 그려 두면, 실제 보여줄 크기(boxWidth)가 줌에 따라
-   * 바뀔 때마다 다시 그릴 필요 없이 CSS로만 줄여/키워 보여줄 수 있다. */
+  /** 확대(zoom)와 무관하게 이 쪽이 화면에서 가장 커질 수 있는(다시 그릴) 크기.
+   * PdfPageCanvas/AnnotationLayer가 이 크기 기준으로만 다시 그려 두면, 실제 보여줄
+   * 크기(boxWidth/boxHeight)가 줌에 따라 바뀔 때마다 다시 그릴 필요 없이 CSS로만
+   * 줄여/키워 보여줄 수 있다. */
   maxBoxWidth: number;
+  maxBoxHeight: number;
   uid: string;
   textbookId: string;
   tool: AnnotationTool;
@@ -60,6 +62,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     boxWidth,
     boxHeight,
     maxBoxWidth,
+    maxBoxHeight,
     uid,
     textbookId,
     tool,
@@ -163,8 +166,8 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
         uid={uid}
         textbookId={textbookId}
         page={pageNumber}
-        width={boxWidth}
-        height={boxHeight}
+        renderWidth={maxBoxWidth}
+        renderHeight={maxBoxHeight}
         tool={drawTool}
         color={color}
         eraserSize={eraserSize}

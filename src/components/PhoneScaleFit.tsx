@@ -1,9 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
-// 짧은 쪽(가로 모드면 높이, 세로 모드면 너비)이 이보다 좁으면 "핸드폰"으로 보고
-// 축소 모드를 적용한다 - 가로/세로 어느 방향으로 들어도 핸드폰은 짧은 쪽이 늘
-// 이 정도(보통 320~430px)라서, 방향에 관계없이 같은 기준으로 판단할 수 있다.
-// 태블릿은 세로로 들어도 보통 768px 이상이라 영향받지 않는다.
+// 가로 폭이 이보다 좁으면 "핸드폰"으로 보고 축소 모드를 적용한다. 한때 "짧은
+// 쪽"(가로 모드면 높이) 기준으로 판단하도록 바꿔서 핸드폰 가로 모드까지
+// 잡으려 했는데, 그러면 태블릿이나 PC에서도 브라우저 창 높이가 이 기준보다
+// 낮아지기만 하면(창을 작게 띄우거나 노트북처럼 화면이 낮은 경우) 태블릿/PC인데도
+// 핸드폰 모드로 잘못 축소되는 문제가 있었다. 태블릿/PC를 절대 건드리지 않는 게
+// 더 중요하므로, 너비만 보는 원래 방식으로 되돌린다 - 핸드폰을 가로로 눕히면
+// 이 축소 모드가 적용되지 않지만(폭이 커지므로), 세로 모드에서는 그대로 잘 된다.
 const PHONE_BREAKPOINT = 700;
 // 안쪽 내용은 항상 이 크기(태블릿 가로 화면 하나)로 렌더링해 두고 화면에 맞게
 // CSS로 축소만 한다 - 글씨/버튼/사각박스 크기 등 모든 비율이 태블릿과 똑같이
@@ -23,9 +26,9 @@ function readViewport() {
   return { w: window.innerWidth, h: window.innerHeight };
 }
 
-export function isPhoneViewport(w?: number, h?: number) {
-  const v = w !== undefined && h !== undefined ? { w, h } : readViewport();
-  return Math.min(v.w, v.h) < PHONE_BREAKPOINT;
+export function isPhoneViewport(w?: number) {
+  const v = w !== undefined ? w : readViewport().w;
+  return v < PHONE_BREAKPOINT;
 }
 
 function usePhoneScale() {
@@ -44,7 +47,7 @@ function usePhoneScale() {
       window.visualViewport?.removeEventListener("scroll", update);
     };
   }, []);
-  const isPhone = Math.min(viewport.w, viewport.h) < PHONE_BREAKPOINT;
+  const isPhone = viewport.w < PHONE_BREAKPOINT;
   const scale = isPhone ? Math.min(viewport.w / REFERENCE_WIDTH, viewport.h / REFERENCE_HEIGHT) : 1;
   return { isPhone, scale, viewport };
 }

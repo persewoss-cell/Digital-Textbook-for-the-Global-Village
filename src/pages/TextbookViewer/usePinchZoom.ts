@@ -87,6 +87,9 @@ export function usePinchZoom({
   zoomRef.current = zoom;
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
+  // 핀치 중 setZoom 호출을 한 프레임에 한 번으로 묶기 위한 대기값/예약 핸들.
+  const pendingZoomRef = useRef<number | null>(null);
+  const zoomRafRef = useRef(0);
 
   // enabled가 꺼지는 순간(필기 도구 선택 등) 진행 중이던 팬/핀치를 확실히 정리한다.
   useEffect(() => {
@@ -196,10 +199,22 @@ export function usePinchZoom({
         midRef.current = midpoint(e.touches[0], e.touches[1]);
         const ratio = d / pinchRef.current.startDistance;
         const next = Math.min(maxZoom, Math.max(minZoom, pinchRef.current.startZoom * ratio));
-        // PdfPageCanvas는 이미 최대 배율 기준 해상도로 그려 둔 상태라, zoom을 손가락
-        // 움직임에 맞춰 바로바로 바꿔도 PDF를 다시 그리는 무거운 작업이 전혀 없다
-        // (CSS 크기만 바뀜) — 그래서 미리보기 없이 실시간으로 반영해도 매끄럽다.
-        setZoom(next);
+        // touchmove는 화면 주사율보다도 훨씬 자주(때로는 프레임당 여러 번) 발생할 수
+        // 있는데, setZoom을 부를 때마다 리액트 리렌더 + 레이아웃 재계산(필기 캔버스
+        // 크기 재조정 등)이 뒤따르므로 그대로 다 반영하면 처리가 밀려 뚝뚝 끊긴다.
+        // 화면이 그릴 수 있는 속도(요청 애니메이션 프레임)에 맞춰 최신 값만 한 번
+        // 반영하도록 묶는다 - 중간 값은 버려도 최종적으로 손가락 위치와 배율은 항상
+        // 맞아떨어진다.
+        pendingZoomRef.current = next;
+        if (zoomRafRef.current === 0) {
+          zoomRafRef.current = requestAnimationFrame(() => {
+            zoomRafRef.current = 0;
+            if (pendingZoomRef.current !== null) {
+              setZoom(pendingZoomRef.current);
+              pendingZoomRef.current = null;
+            }
+          });
+        }
       }
     };
 
@@ -236,6 +251,11 @@ export function usePinchZoom({
     el.addEventListener("gesturechange", onGestureChange as EventListener, { passive: false });
     return () => {
       cancelPendingEnd();
+      if (zoomRafRef.current) {
+        cancelAnimationFrame(zoomRafRef.current);
+        zoomRafRef.current = 0;
+      }
+      pendingZoomRef.current = null;
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);
@@ -259,4 +279,57 @@ export function usePinchZoom({
     scrollEl.scrollTop += targetY - mid.y;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom]);
+
+  // PC(마우스)에서도 태블릿의 한 손가락 팬처럼, 교재 위 빈 곳을 눌러서 그대로
+  // 드래그하면 그 방향대로 스크롤되게 한다. 활동 확대 아이콘/번호나 메모처럼 그
+  // 자리에서 뭔가를 해야 하는 요소들은 이미 자기 pointerdown에서 stopPropagation을
+  // 부르고 있어서(ActivityZoneOverlay, NotesOverlay 등), 그런 요소를 누를 때는 이
+  // 리스너까지 이벤트가 올라오지 않아 자연스럽게 드래그팬이 시작되지 않는다.
+  useEffect(() => {
+    if (!scrollEl) return;
+    const el = scrollEl;
+    // 마우스를 올렸을 때 "여기를 잡고 움직일 수 있다"는 걸 보여주는 기본 커서.
+    // 도구가 선택돼 있으면(그림을 그릴 때) grab 커서를 보이지 않는다.
+    el.style.cursor = enabled ? "grab" : "";
+
+    const DRAG_THRESHOLD = 4;
+    let down: { x: number; y: number; scrollLeft: number; scrollTop: number } | null = null;
+    let dragging = false;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.pointerType !== "mouse" || e.button !== 0 || !enabledRef.current) return;
+      down = { x: e.clientX, y: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
+      dragging = false;
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (!down) return;
+      const dx = e.clientX - down.x;
+      const dy = e.clientY - down.y;
+      if (!dragging) {
+        if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+        dragging = true;
+        el.style.cursor = "grabbing";
+      }
+      e.preventDefault();
+      el.scrollLeft = down.scrollLeft - dx;
+      el.scrollTop = down.scrollTop - dy;
+    };
+    const endDrag = () => {
+      down = null;
+      dragging = false;
+      el.style.cursor = enabledRef.current ? "grab" : "";
+    };
+
+    el.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
+    return () => {
+      el.style.cursor = "";
+      el.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", endDrag);
+      window.removeEventListener("pointercancel", endDrag);
+    };
+  }, [scrollEl, enabled]);
 }

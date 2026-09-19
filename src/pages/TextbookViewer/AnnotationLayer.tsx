@@ -144,8 +144,16 @@ export const AnnotationLayer = forwardRef<
     uid: string;
     textbookId: string;
     page: number;
-    width: number;
-    height: number;
+    /** 캔버스 자체 해상도로 쓸 크기(줌과 무관하게 상한이 있음 - 부모가
+     * RENDER_ZOOM_CEILING 기준으로 계산해 넘겨준다). 실제 화면에 보여줄 크기는
+     * 캔버스가 className="absolute inset-0"로 부모 쪽 div(width/height가 boxWidth/
+     * boxHeight로 줌에 따라 계속 바뀜)에 꽉 차게 붙어서 CSS로만 늘어나고 줄어든다.
+     * 손가락 제스처로 줌이 계속 바뀔 때마다 이 값 기준으로 캔버스를 다시
+     * 그리면(지우고 모든 획을 다시 그림) 매 프레임 무거운 작업이 끼어들어 뚝뚝
+     * 끊기므로, 실제로 다시 그리는 건 이 상한 안에서만 하고 그 이상은 CSS 확대로
+     * 매끄럽게 처리한다(PdfPageCanvas의 renderWidth/displayWidth 분리와 같은 원리). */
+    renderWidth: number;
+    renderHeight: number;
     tool: DrawTool | ShapeTool | "none";
     color: string;
     eraserSize: number;
@@ -166,8 +174,8 @@ export const AnnotationLayer = forwardRef<
     uid,
     textbookId,
     page,
-    width,
-    height,
+    renderWidth,
+    renderHeight,
     tool,
     color,
     eraserSize,
@@ -256,13 +264,13 @@ export const AnnotationLayer = forwardRef<
     if (!canvas) return;
     // 브라우저별 캔버스 최대 크기 한도를 넘으면 그리기가 깨지므로 안전하게 낮춘다
     // (PdfPageCanvas와 같은 이유 — 크게 확대했을 때 필기 캔버스도 함께 문제가 없도록).
-    const largestSide = Math.max(width, height);
+    const largestSide = Math.max(renderWidth, renderHeight);
     const shrink = largestSide > MAX_CANVAS_DIMENSION ? MAX_CANVAS_DIMENSION / largestSide : 1;
-    canvas.width = width * shrink;
-    canvas.height = height * shrink;
+    canvas.width = renderWidth * shrink;
+    canvas.height = renderHeight * shrink;
     redraw(strokes);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strokes, width, height]);
+  }, [strokes, renderWidth, renderHeight]);
 
   const toLocal = (clientX: number, clientY: number): [number, number] => {
     const canvas = canvasRef.current!;

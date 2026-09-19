@@ -36,7 +36,7 @@ import type { ActivityZone } from "./activityZones";
 
 const ZOOM_STEP = 0.2;
 const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 8;
+const MAX_ZOOM = 7;
 const PAGE_GAP = 0;
 const CONTAINER_PADDING = 4;
 const FIT_SAFETY_MARGIN = 6;
@@ -864,8 +864,8 @@ export default function TextbookViewerPage() {
                     uid={effectiveUid}
                     textbookId={textbookId!}
                     page={0}
-                    width={Math.max(300, containerSize.w - CONTAINER_PADDING * 2)}
-                    height={Math.max(300, containerSize.h - CONTAINER_PADDING * 2)}
+                    renderWidth={Math.max(300, containerSize.w - CONTAINER_PADDING * 2)}
+                    renderHeight={Math.max(300, containerSize.h - CONTAINER_PADDING * 2)}
                     tool={tool === "note" ? "none" : tool}
                     color={color}
                     eraserSize={eraserSize}
@@ -914,6 +914,7 @@ export default function TextbookViewerPage() {
                             boxWidth={boxWidth}
                             boxHeight={boxHeight}
                             maxBoxWidth={maxBoxWidth}
+                            maxBoxHeight={maxBoxWidth * aspect}
                             uid={effectiveUid}
                             textbookId={textbookId!}
                             tool={tool}

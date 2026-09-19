@@ -24,7 +24,7 @@ import { usePinchZoom } from "@/pages/TextbookViewer/usePinchZoom";
 import type { ActivityZone } from "@/pages/TextbookViewer/activityZones";
 
 const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 8;
+const MAX_ZOOM = 7;
 const PAGE_GAP = 0;
 const CONTAINER_PADDING = 4;
 const FIT_SAFETY_MARGIN = 6;
@@ -735,8 +735,8 @@ export default function PreviewViewerPage() {
                     uid={PREVIEW_UID}
                     textbookId={textbookId!}
                     page={0}
-                    width={Math.max(300, containerSize.w - CONTAINER_PADDING * 2)}
-                    height={Math.max(300, containerSize.h - CONTAINER_PADDING * 2)}
+                    renderWidth={Math.max(300, containerSize.w - CONTAINER_PADDING * 2)}
+                    renderHeight={Math.max(300, containerSize.h - CONTAINER_PADDING * 2)}
                     tool={tool === "note" ? "none" : tool}
                     color={color}
                     eraserSize={eraserSize}
@@ -773,6 +773,7 @@ export default function PreviewViewerPage() {
                             boxWidth={boxWidth}
                             boxHeight={boxHeight}
                             maxBoxWidth={maxBoxWidth}
+                            maxBoxHeight={maxBoxWidth * aspect}
                             uid={PREVIEW_UID}
                             textbookId={textbookId!}
                             tool={tool}

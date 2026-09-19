@@ -101,6 +101,17 @@ export interface AnnotationLayerHandle {
     clientPoints: number[],
     meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number },
   ) => void;
+  /** 옆 쪽에서 그리는 중(아직 손을 떼지 않음)인 획이 경계를 넘어온 부분을
+   * 실시간으로 미리 보여준다 - 손을 뗄 때까지 기다렸다 한 번에 나타나면 중앙에서
+   * 끊겨 보이므로, 그리는 동안 매 프레임 이 쪽에도 같이 그려서 이어져 보이게
+   * 한다. 아직 커밋(저장)하지는 않는다. */
+  previewExternalPoints: (
+    clientPoints: number[],
+    meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number },
+  ) => void;
+  /** 옆 쪽으로 넘어왔던 미리보기를 지운다(다시 이 쪽 밖으로 나갔거나, 드래그가
+   * 끝나 커밋됐거나, 취소됐을 때). */
+  clearExternalPreview: () => void;
 }
 
 const PENCIL_COLOR = "#52525b"; // 연필은 항상 회색 연필 느낌으로 고정
@@ -280,6 +291,9 @@ export const AnnotationLayer = forwardRef<
   const history = useRef<Stroke[][]>(getPageHistory(historyMap, page));
   const future = useRef<Stroke[][]>(getPageHistory(futureMap, page));
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+  // 지금 그리는 중인 획이 옆 쪽으로 넘어가 그쪽에 실시간 미리보기를 띄워 둔 적이
+  // 있는지 - 다시 이쪽으로 돌아오거나 손을 떼면 그 미리보기를 지워 줘야 한다.
+  const neighborPreviewActiveRef = useRef(false);
 
   useEffect(() => {
     strokesRef.current = strokes;
@@ -335,6 +349,30 @@ export const AnnotationLayer = forwardRef<
           ...strokesRef.current,
           { tool: meta.tool as "pen" | "colorPen", color: meta.color, width: meta.width, alpha: meta.alpha, points },
         ]);
+      },
+      previewExternalPoints: (clientPoints, meta) => {
+        if (readOnly) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const points: number[] = [];
+        for (let i = 0; i < clientPoints.length; i += 2) {
+          const [x, y] = toLocal(clientPoints[i], clientPoints[i + 1]);
+          points.push(x / canvas.width, y / canvas.height);
+        }
+        if (points.length < 4) {
+          redraw(strokesRef.current);
+          return;
+        }
+        redraw(strokesRef.current, {
+          tool: meta.tool as "pen" | "colorPen",
+          color: meta.color,
+          width: meta.width,
+          alpha: meta.alpha,
+          points,
+        });
+      },
+      clearExternalPreview: () => {
+        redraw(strokesRef.current);
       },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -425,6 +463,33 @@ export const AnnotationLayer = forwardRef<
     }
   };
 
+  /** 아직 손을 떼지 않고 그리는 중인 획이 경계 너머로 넘어간 부분을 옆 쪽에
+   * 실시간으로 미리 보여준다(커밋은 손을 뗄 때 commitAcrossBoundary가 한다). 손을
+   * 떼기 전까지는 중앙에서 끊겨 보이지 않도록, 매 pointermove마다 부른다. */
+  const previewAcrossBoundary = (
+    points: number[],
+    meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number },
+  ) => {
+    if (!neighborAnnotation) return;
+    const canvas = canvasRef.current;
+    const neighbor = neighborAnnotation.getHandle();
+    if (!canvas || !neighbor) return;
+    const runs = splitPointsByBoundary(points, neighborAnnotation.boundaryFx);
+    const otherRun = runs.find((r) => !r.self && r.points.length >= 4);
+    if (otherRun) {
+      const rect = canvas.getBoundingClientRect();
+      const clientPoints: number[] = [];
+      for (let i = 0; i < otherRun.points.length; i += 2) {
+        clientPoints.push(rect.left + otherRun.points[i] * rect.width, rect.top + otherRun.points[i + 1] * rect.height);
+      }
+      neighbor.previewExternalPoints(clientPoints, meta);
+      neighborPreviewActiveRef.current = true;
+    } else if (neighborPreviewActiveRef.current) {
+      neighbor.clearExternalPreview();
+      neighborPreviewActiveRef.current = false;
+    }
+  };
+
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (readOnly || tool === "none") return;
     canvasRef.current?.setPointerCapture(e.pointerId);
@@ -467,6 +532,7 @@ export const AnnotationLayer = forwardRef<
       );
       shapeDraft.current = points;
       redraw(strokes, { tool: "colorPen", color, width: strokeWidth, alpha: 1, points });
+      previewAcrossBoundary(points, { tool: "colorPen", color, width: strokeWidth, alpha: 1 });
       return;
     }
     if (!drawing.current) return;
@@ -479,6 +545,17 @@ export const AnnotationLayer = forwardRef<
       alpha: strokeAlpha,
       points: drawing.current,
     });
+    previewAcrossBoundary(drawing.current, { tool: tool as DrawTool, color, width: strokeWidth, alpha: strokeAlpha });
+  };
+
+  // 실시간 미리보기를 옆 쪽에 남겨 둔 채로 손을 떼면(커밋으로 대체되지 않는 경우,
+  // 예: 넘어간 부분이 너무 짧아 커밋되지 않은 경우) 그대로 화면에 남아버리므로
+  // 손을 뗄 때 항상 정리한다.
+  const clearNeighborPreview = () => {
+    if (neighborPreviewActiveRef.current) {
+      neighborAnnotation?.getHandle()?.clearExternalPreview();
+      neighborPreviewActiveRef.current = false;
+    }
   };
 
   const handlePointerUp = () => {
@@ -494,13 +571,18 @@ export const AnnotationLayer = forwardRef<
       const points = shapeDraft.current;
       shapeStart.current = null;
       shapeDraft.current = null;
+      clearNeighborPreview();
       if (!points || points.length < 4) return;
       commitAcrossBoundary(points, { tool: "colorPen", color, width: strokeWidth, alpha: 1 });
       return;
     }
-    if (!drawing.current) return;
+    if (!drawing.current) {
+      clearNeighborPreview();
+      return;
+    }
     const points = drawing.current;
     drawing.current = null;
+    clearNeighborPreview();
     if (points.length < 4) return; // ignore accidental taps
     commitAcrossBoundary(points, { tool: tool as DrawTool, color, width: strokeWidth, alpha: strokeAlpha });
   };

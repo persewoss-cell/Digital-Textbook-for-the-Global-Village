@@ -758,6 +758,15 @@ export default function PreviewViewerPage() {
                     width: Math.max(300, containerSize.w - CONTAINER_PADDING * 2),
                     height: Math.max(300, containerSize.h - CONTAINER_PADDING * 2),
                   }}
+                  onContextMenu={(e) => {
+                    if (tool !== "none") {
+                      e.preventDefault();
+                      setTool("none");
+                    } else if (whiteboardMode) {
+                      e.preventDefault();
+                      setWhiteboardMode(false);
+                    }
+                  }}
                 >
                   <AnnotationLayer
                     ref={whiteboardRef}
@@ -825,6 +834,7 @@ export default function PreviewViewerPage() {
                             onSelectNote={(id) => handleSelectNote(n, id)}
                             onMoveNote={(id, x, y) => handleMoveNote(n, id, x, y)}
                             onDeleteNote={(id) => handleDeleteNoteOnPage(n, id)}
+                            onRequestDeselectTool={() => setTool("none")}
                             neighborAnnotation={
                               viewMode === "spread" && pagesToShow.length === 2
                                 ? idx === 0

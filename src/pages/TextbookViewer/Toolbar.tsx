@@ -63,7 +63,7 @@ function DeselectHint() {
         visible ? "opacity-100" : "opacity-0"
       }`}
     >
-      마우스 오른쪽 버튼을 누르면 선택이 해제돼요
+그 위에서 마우스 오른쪽 버튼을 누르면 선택이 해제돼요
       <div className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-slate-800" />
     </div>
   );
@@ -278,12 +278,8 @@ export function Toolbar({
             <div className="relative">
               <button
                 className={`btn-ghost !px-1 ${tool === "pen" ? "bg-brand-100 text-brand-700" : ""}`}
-                title="연필 (오른쪽 클릭으로 해제)"
+                title="연필"
                 onClick={() => onToolChange(tool === "pen" ? "none" : "pen")}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  if (tool === "pen") onToolChange("none");
-                }}
               >
                 ✏️
                 {tool === "pen" && <SelectedDot />}
@@ -295,15 +291,10 @@ export function Toolbar({
             <div className="relative" ref={penWrapRef}>
               <button
                 className={`btn-ghost !px-1 ${tool === "colorPen" ? "bg-brand-100 text-brand-700" : ""}`}
-                title="색펜 (오른쪽 클릭으로 해제)"
+                title="색펜"
                 onClick={() => {
                   setPenMenuOpen((v) => !v);
                   setShapeMenuOpen(false);
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  if (tool === "colorPen") onToolChange("none");
-                  setPenMenuOpen(false);
                 }}
               >
                 🖊️
@@ -347,15 +338,10 @@ export function Toolbar({
             <div className="relative" ref={shapeWrapRef}>
               <button
                 className={`btn-ghost !px-1 ${isShapeTool(tool) ? "bg-brand-100 text-brand-700" : ""}`}
-                title="도형 (오른쪽 클릭으로 해제)"
+                title="도형"
                 onClick={() => {
                   setShapeMenuOpen((v) => !v);
                   setPenMenuOpen(false);
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  if (isShapeTool(tool)) onToolChange("none");
-                  setShapeMenuOpen(false);
                 }}
               >
                 🔷 <span className="hidden lg:inline">도형</span>
@@ -399,12 +385,8 @@ export function Toolbar({
             <div className="relative">
               <button
                 className={`btn-ghost !px-1 ${tool === "eraser" ? "bg-brand-100 text-brand-700" : ""}`}
-                title="지우개 (오른쪽 클릭으로 해제)"
+                title="지우개"
                 onClick={() => onToolChange(tool === "eraser" ? "none" : "eraser")}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  if (tool === "eraser") onToolChange("none");
-                }}
               >
                 <EraserIcon className="h-4 w-4" />
                 {tool === "eraser" && <SelectedDot />}
@@ -439,12 +421,8 @@ export function Toolbar({
             <div className="relative">
               <button
                 className={`btn-ghost !px-1 text-xs ${whiteboardMode ? "bg-brand-100 text-brand-700" : ""}`}
-                title="화이트보드 (오른쪽 클릭으로 끄기)"
+                title="화이트보드"
                 onClick={onToggleWhiteboard}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  if (whiteboardMode) onToggleWhiteboard();
-                }}
               >
                 🖍️ <span className="hidden lg:inline">화이트보드</span>
                 {whiteboardMode && <SelectedDot />}

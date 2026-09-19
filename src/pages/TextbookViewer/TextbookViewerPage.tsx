@@ -889,6 +889,17 @@ export default function TextbookViewerPage() {
                     width: Math.max(300, containerSize.w - CONTAINER_PADDING * 2),
                     height: Math.max(300, containerSize.h - CONTAINER_PADDING * 2),
                   }}
+                  onContextMenu={(e) => {
+                    // 화이트보드 위에서 오른쪽 클릭: 필기 도구가 선택돼 있으면 그것부터
+                    // 해제하고, 도구가 없는 상태면 화이트보드 자체를 끈다.
+                    if (tool !== "none") {
+                      e.preventDefault();
+                      setTool("none");
+                    } else if (whiteboardMode) {
+                      e.preventDefault();
+                      setWhiteboardMode(false);
+                    }
+                  }}
                 >
                   <AnnotationLayer
                     ref={whiteboardRef}
@@ -967,6 +978,7 @@ export default function TextbookViewerPage() {
                             onSelectNote={(id) => handleSelectNote(n, id)}
                             onMoveNote={(id, x, y) => handleMoveNote(n, id, x, y)}
                             onDeleteNote={(id) => handleDeleteNoteOnPage(n, id)}
+                            onRequestDeselectTool={() => setTool("none")}
                             neighborAnnotation={
                               viewMode === "spread" && pagesToShow.length === 2
                                 ? idx === 0

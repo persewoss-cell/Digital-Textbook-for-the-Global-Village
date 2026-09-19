@@ -51,6 +51,9 @@ interface BookPageProps {
   /** 지우개가 메모 위를 지나가면 그 메모를 통째로 지운다(실수로 지웠으면 undo로
    * 되살릴 수 있다). 없으면 지우개는 필기만 지운다. */
   onDeleteNote?: (id: string) => void;
+  /** 도구가 선택된 상태에서 교재(캔버스) 위에 마우스 오른쪽 버튼을 누르면
+   * 선택을 해제해 달라고 부모에게 요청한다. */
+  onRequestDeselectTool?: () => void;
   /** 두 쪽 보기에서 옆 쪽으로 넘어간 획을 이어 그릴 수 있도록 옆 쪽의
    * AnnotationLayer를 알려준다. 한 쪽 보기거나 스프레드 끝이면 undefined. */
   neighborAnnotation?: { boundaryFx: 0 | 1; getHandle: () => AnnotationLayerHandle | null };
@@ -93,6 +96,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     onSelectNote,
     onMoveNote,
     onDeleteNote,
+    onRequestDeselectTool,
     neighborAnnotation,
     onActivateZone,
     onPageReady,
@@ -113,9 +117,14 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
   // 표시. 마우스는 hover로 미리 보이니 바로 확대하지만, 터치는 hover가 없어서 한 번 더
   // 눌러야 확대되게 한다. 세 종류(zones/subZones/images) 중 하나만 켜져 있을 수 있다.
   const [armedKey, setArmedKey] = useState<string | null>(null);
-  // 지우개가 이미 지운 메모를 같은 드래그 중에 또 지우려 하지 않도록(중복 undo
-  // 기록 방지) 이번 지우개질에서 지운 메모 id를 기억해 둔다.
-  const erasedNoteIdsRef = useRef<Set<string>>(new Set());
+  // 지우개가 스친 메모의 id를 이번 드래그가 끝날 때(pointerup)까지 모아 뒀다가
+  // 그때 한꺼번에 지운다. 바로바로 지우면(pointerdown/move 시점), 같은 드래그
+  // 안에서 필기(잉크)도 같이 지워졌을 때 필기 쪽 실행취소 기록이 나중에(pointerup
+  // 시점에) 찍혀서 "가장 최근 동작"이 필기 지우기가 돼 버려, 되돌리기를 한 번
+  // 눌러도 메모가 아니라 필기부터 되돌아가는 문제가 있었다. 메모 삭제도 똑같이
+  // pointerup에서 처리해야 항상 이 드래그의 "가장 마지막 동작"이 되어, 되돌리기
+  // 한 번으로 방금 지운 메모가 바로 되살아난다.
+  const pendingErasedNoteIdsRef = useRef<Set<string>>(new Set());
   // 지우개 원(화면에 보이는 크기)에서 살짝 더 넉넉하게 잡아야, 작은 메모 아이콘도
   // 정확히 겨냥하지 않아도 자연스럽게 지워진다.
   const NOTE_ERASE_PADDING = 16;
@@ -145,16 +154,13 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
 
   const drawTool = tool === "note" ? "none" : tool;
 
-  const eraseNotesAt = (clientX: number, clientY: number, rect: DOMRect) => {
+  const markNotesForErase = (clientX: number, clientY: number, rect: DOMRect) => {
     if (tool !== "eraser" || readOnly || !onDeleteNote) return;
     for (const note of noteItems) {
       const nx = rect.left + note.x * rect.width;
       const ny = rect.top + note.y * rect.height;
       if (Math.hypot(clientX - nx, clientY - ny) <= eraserSize + NOTE_ERASE_PADDING) {
-        if (!erasedNoteIdsRef.current.has(note.id)) {
-          erasedNoteIdsRef.current.add(note.id);
-          onDeleteNote(note.id);
-        }
+        pendingErasedNoteIdsRef.current.add(note.id);
       }
     }
   };
@@ -172,14 +178,29 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
       style={{ width: boxWidth, height: boxHeight }}
       onPointerDown={(e) => {
         setArmedKey(null);
-        erasedNoteIdsRef.current.clear();
-        eraseNotesAt(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
+        markNotesForErase(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
       }}
       onPointerMove={(e) => {
-        if (e.buttons & 1) eraseNotesAt(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
+        if (e.buttons & 1) markNotesForErase(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
       }}
       onPointerUp={() => {
-        erasedNoteIdsRef.current.clear();
+        // 이 시점엔 이미 자식(AnnotationLayer 캔버스)의 pointerup이 먼저 실행되어
+        // 이번 드래그로 지워진 필기가 있었다면 그 커밋까지 끝난 뒤다 - 메모 삭제를
+        // 여기서 처리해야 항상 그 다음 순서(=가장 최근 동작)가 되어 되돌리기 한
+        // 번으로 메모부터 되살아난다.
+        if (pendingErasedNoteIdsRef.current.size > 0 && onDeleteNote) {
+          pendingErasedNoteIdsRef.current.forEach((id) => onDeleteNote(id));
+          pendingErasedNoteIdsRef.current.clear();
+        }
+      }}
+      onContextMenu={(e) => {
+        // "선택 해제" 오른쪽 클릭은 아이콘이 아니라 교재(캔버스) 위에서 눌러야
+        // 동작한다 - 여기서 처리해야 도구가 선택된 동안 실수로 브라우저 기본
+        // 메뉴가 뜨는 것도 같이 막을 수 있다.
+        if (tool !== "none" && onRequestDeselectTool) {
+          e.preventDefault();
+          onRequestDeselectTool();
+        }
       }}
     >
       <PdfPageCanvas

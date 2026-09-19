@@ -68,6 +68,7 @@ export function usePinchZoom({
   minZoom,
   maxZoom,
   enabled,
+  wheelEnabled,
 }: {
   scrollRef: React.RefObject<HTMLElement>;
   contentRef: React.RefObject<HTMLElement>;
@@ -75,7 +76,13 @@ export function usePinchZoom({
   setZoom: (z: number) => void;
   minZoom: number;
   maxZoom: number;
+  /** 드래그 팬(손 모양 커서로 화면 이동)을 쓸 수 있는지. 필기 도구가 선택돼 있으면
+   * 드래그가 그리기로 쓰여야 하므로 꺼진다. */
   enabled: boolean;
+  /** 휠(및 트랙패드 핀치)로 확대/축소할 수 있는지. 필기 도구가 선택돼 있어도(커서가
+   * 손 모양이 아니어도) 교재 위에 마우스가 있으면 휠로는 항상 확대/축소할 수 있어야
+   * 하므로 enabled와 분리했다 - 없으면 enabled와 같게 동작한다. */
+  wheelEnabled?: boolean;
 }) {
   const scrollEl = useAttachedElement(scrollRef);
   const contentEl = useAttachedElement(contentRef);
@@ -87,6 +94,8 @@ export function usePinchZoom({
   zoomRef.current = zoom;
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
+  const wheelEnabledRef = useRef(wheelEnabled ?? enabled);
+  wheelEnabledRef.current = wheelEnabled ?? enabled;
   // 핀치 중 setZoom 호출을 한 프레임에 한 번으로 묶기 위한 대기값/예약 핸들.
   const pendingZoomRef = useRef<number | null>(null);
   const zoomRafRef = useRef(0);
@@ -291,7 +300,7 @@ export function usePinchZoom({
     if (!scrollEl || !contentEl) return;
     const el = scrollEl;
     const onWheel = (e: WheelEvent) => {
-      if (!enabledRef.current) return;
+      if (!wheelEnabledRef.current) return;
       e.preventDefault();
       const rect = contentEl.getBoundingClientRect();
       const fx = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;

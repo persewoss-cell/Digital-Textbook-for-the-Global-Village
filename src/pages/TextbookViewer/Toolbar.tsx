@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { PEN_STYLES, type AnnotationTool, type PenStyleId, type ShapeTool } from "@/types";
 import { SHAPE_TOOLS as SHAPE_TOOL_ORDER } from "./AnnotationLayer";
 
@@ -42,6 +42,32 @@ const ERASER_SIZES = [
   { label: "M", value: 10 },
   { label: "L", value: 16 },
 ];
+
+/** 도구가 선택돼 있음을 보여주는 아이콘 오른쪽 위 빨간 점. */
+function SelectedDot() {
+  return (
+    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500 ring-1 ring-white" />
+  );
+}
+
+/** 도구를 처음 선택했을 때 "오른쪽 버튼으로 해제할 수 있다"를 잠깐 알려주는 말풍선. */
+function DeselectHint() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <div
+      className={`pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-max -translate-x-1/2 rounded-lg bg-slate-800 px-2 py-1 text-[11px] font-medium text-white shadow-lg transition-opacity duration-150 ${
+        visible ? "opacity-100" : "opacity-0"
+      }`}
+    >
+      마우스 오른쪽 버튼을 누르면 선택이 해제돼요
+      <div className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-slate-800" />
+    </div>
+  );
+}
 
 function ColorSwatches({ color, onColorChange }: { color: string; onColorChange: (c: string) => void }) {
   return (
@@ -127,9 +153,61 @@ export function Toolbar({
   const [query, setQuery] = useState("");
   const [penMenuOpen, setPenMenuOpen] = useState(false);
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
+  const penWrapRef = useRef<HTMLDivElement>(null);
+  const shapeWrapRef = useRef<HTMLDivElement>(null);
 
   const isShapeTool = (t: AnnotationTool): t is ShapeTool =>
     (SHAPE_TOOL_ORDER as string[]).includes(t);
+
+  // 펜/도형 종류 선택 창은, 색상까지 골라야만 닫히는 게 아니라 교재에 그리기
+  // 시작하거나(그 순간 캔버스에서 pointerdown이 일어남) 다른 아이콘을 누르는 등
+  // 창 밖 아무 곳이나 다시 조작하면 바로 닫혀야 자연스럽다. capture 단계에서
+  // 감지해야 실제로 그리기가 시작되기 전에(그 pointerdown이 캔버스에 도달하기
+  // 전에) 먼저 닫을 수 있다.
+  useEffect(() => {
+    if (!penMenuOpen && !shapeMenuOpen) return;
+    const onPointerDownCapture = (e: PointerEvent) => {
+      const target = e.target as Node;
+      const insidePen = !!penWrapRef.current?.contains(target);
+      const insideShape = !!shapeWrapRef.current?.contains(target);
+      if (!insidePen && !insideShape) {
+        setPenMenuOpen(false);
+        setShapeMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDownCapture, true);
+    return () => document.removeEventListener("pointerdown", onPointerDownCapture, true);
+  }, [penMenuOpen, shapeMenuOpen]);
+
+  // 도구가 새로 선택될 때(연필/색펜/도형/지우개/화이트보드) 잠깐 "오른쪽 버튼으로
+  // 해제할 수 있다"는 안내를 보여준다.
+  const [hintKey, setHintKey] = useState<string | null>(null);
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevToolRef = useRef(tool);
+  const prevWhiteboardRef = useRef(whiteboardMode);
+  const showHint = (key: string) => {
+    setHintKey(key);
+    if (hintTimer.current) clearTimeout(hintTimer.current);
+    hintTimer.current = setTimeout(() => setHintKey(null), 2200);
+  };
+  useEffect(() => {
+    const prev = prevToolRef.current;
+    prevToolRef.current = tool;
+    if (prev === tool || tool === "none" || tool === "note") return;
+    if (tool === "pen") showHint("pen");
+    else if (tool === "colorPen") showHint("colorPen");
+    else if (tool === "eraser") showHint("eraser");
+    else if (isShapeTool(tool)) showHint("shape");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool]);
+  useEffect(() => {
+    if (!prevWhiteboardRef.current && whiteboardMode) showHint("whiteboard");
+    prevWhiteboardRef.current = whiteboardMode;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [whiteboardMode]);
+  useEffect(() => () => {
+    if (hintTimer.current) clearTimeout(hintTimer.current);
+  }, []);
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-200 bg-white px-1 py-2 lg:gap-1 lg:px-2">
@@ -197,26 +275,41 @@ export function Toolbar({
           <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
           {/* annotation tools */}
           <div className="flex items-center gap-0.5">
-            <button
-              className={`btn-ghost !px-1 ${tool === "pen" ? "bg-brand-100 text-brand-700" : ""}`}
-              title="연필"
-              onClick={() => onToolChange(tool === "pen" ? "none" : "pen")}
-            >
-              ✏️
-            </button>
-
-            {/* 색펜: 누르면 펜 종류 + 색상을 고르는 창이 뜬다 */}
             <div className="relative">
               <button
+                className={`btn-ghost !px-1 ${tool === "pen" ? "bg-brand-100 text-brand-700" : ""}`}
+                title="연필 (오른쪽 클릭으로 해제)"
+                onClick={() => onToolChange(tool === "pen" ? "none" : "pen")}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  if (tool === "pen") onToolChange("none");
+                }}
+              >
+                ✏️
+                {tool === "pen" && <SelectedDot />}
+              </button>
+              {hintKey === "pen" && <DeselectHint />}
+            </div>
+
+            {/* 색펜: 누르면 펜 종류 + 색상을 고르는 창이 뜬다 */}
+            <div className="relative" ref={penWrapRef}>
+              <button
                 className={`btn-ghost !px-1 ${tool === "colorPen" ? "bg-brand-100 text-brand-700" : ""}`}
-                title="색펜"
+                title="색펜 (오른쪽 클릭으로 해제)"
                 onClick={() => {
                   setPenMenuOpen((v) => !v);
                   setShapeMenuOpen(false);
                 }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  if (tool === "colorPen") onToolChange("none");
+                  setPenMenuOpen(false);
+                }}
               >
                 🖊️
+                {tool === "colorPen" && <SelectedDot />}
               </button>
+              {hintKey === "colorPen" && <DeselectHint />}
               {penMenuOpen && (
                 <div className="absolute left-0 top-9 z-20 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
                   <p className="mb-1.5 text-[11px] font-semibold text-slate-400">펜 종류</p>
@@ -251,17 +344,24 @@ export function Toolbar({
             </div>
 
             {/* 도형: 누르면 어떤 도형을 그릴지 고르는 창이 뜬다 */}
-            <div className="relative">
+            <div className="relative" ref={shapeWrapRef}>
               <button
                 className={`btn-ghost !px-1 ${isShapeTool(tool) ? "bg-brand-100 text-brand-700" : ""}`}
-                title="도형"
+                title="도형 (오른쪽 클릭으로 해제)"
                 onClick={() => {
                   setShapeMenuOpen((v) => !v);
                   setPenMenuOpen(false);
                 }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  if (isShapeTool(tool)) onToolChange("none");
+                  setShapeMenuOpen(false);
+                }}
               >
                 🔷 <span className="hidden lg:inline">도형</span>
+                {isShapeTool(tool) && <SelectedDot />}
               </button>
+              {hintKey === "shape" && <DeselectHint />}
               {shapeMenuOpen && (
                 <div className="absolute left-0 top-9 z-20 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
                   <p className="mb-1.5 text-[11px] font-semibold text-slate-400">도형 종류</p>
@@ -296,13 +396,21 @@ export function Toolbar({
               )}
             </div>
 
-            <button
-              className={`btn-ghost !px-1 ${tool === "eraser" ? "bg-brand-100 text-brand-700" : ""}`}
-              title="지우개"
-              onClick={() => onToolChange(tool === "eraser" ? "none" : "eraser")}
-            >
-              <EraserIcon className="h-4 w-4" />
-            </button>
+            <div className="relative">
+              <button
+                className={`btn-ghost !px-1 ${tool === "eraser" ? "bg-brand-100 text-brand-700" : ""}`}
+                title="지우개 (오른쪽 클릭으로 해제)"
+                onClick={() => onToolChange(tool === "eraser" ? "none" : "eraser")}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  if (tool === "eraser") onToolChange("none");
+                }}
+              >
+                <EraserIcon className="h-4 w-4" />
+                {tool === "eraser" && <SelectedDot />}
+              </button>
+              {hintKey === "eraser" && <DeselectHint />}
+            </div>
             {tool === "eraser" &&
               ERASER_SIZES.map((s) => (
                 <button
@@ -328,13 +436,21 @@ export function Toolbar({
 
           {/* 화이트보드 */}
           <div className="flex items-center gap-0.5">
-            <button
-              className={`btn-ghost !px-1 text-xs ${whiteboardMode ? "bg-brand-100 text-brand-700" : ""}`}
-              title="화이트보드"
-              onClick={onToggleWhiteboard}
-            >
-              🖍️ <span className="hidden lg:inline">화이트보드</span>
-            </button>
+            <div className="relative">
+              <button
+                className={`btn-ghost !px-1 text-xs ${whiteboardMode ? "bg-brand-100 text-brand-700" : ""}`}
+                title="화이트보드 (오른쪽 클릭으로 끄기)"
+                onClick={onToggleWhiteboard}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  if (whiteboardMode) onToggleWhiteboard();
+                }}
+              >
+                🖍️ <span className="hidden lg:inline">화이트보드</span>
+                {whiteboardMode && <SelectedDot />}
+              </button>
+              {hintKey === "whiteboard" && <DeselectHint />}
+            </div>
             {whiteboardMode && (
               <button className="btn-ghost !px-1 text-xs" title="화이트보드 모두 지우기" onClick={onClearWhiteboard}>
                 🗑️ <span className="hidden lg:inline">모두 지우기</span>

@@ -10,6 +10,31 @@ export const SHAPE_TOOLS: ShapeTool[] = ["line", "arrow", "rectangle", "triangle
 const isShapeTool = (t: DrawTool | ShapeTool | "none"): t is ShapeTool =>
   (SHAPE_TOOLS as string[]).includes(t);
 
+// 지우개는 (아래 eraseAtPoint) 저장된 점 하나하나와의 거리로만 지울지 말지 판단한다.
+// 도형은 사각형이면 모서리 5개, 직선이면 2개처럼 점이 서로 멀리 떨어져 있어서, 그
+// 사이 변 한가운데를 지우개로 눌러도 가까운 점이 하나도 없어 전혀 지워지지 않는
+// 문제가 있었다. 도형의 각 변을 이 정도 촘촘하게(캔버스 픽셀 기준) 점으로 잘게
+// 쪼개 두면, 자유롭게 그린 선처럼 지우개가 닿은 부분만 자연스럽게 지워진다.
+const SHAPE_DENSIFY_STEP_PX = 8;
+
+function densifyPolyline(points: number[], canvasW: number, canvasH: number): number[] {
+  if (points.length < 4) return points;
+  const out: number[] = [points[0], points[1]];
+  for (let i = 0; i < points.length - 2; i += 2) {
+    const x1 = points[i];
+    const y1 = points[i + 1];
+    const x2 = points[i + 2];
+    const y2 = points[i + 3];
+    const distPx = Math.hypot((x2 - x1) * canvasW, (y2 - y1) * canvasH);
+    const steps = Math.max(1, Math.round(distPx / SHAPE_DENSIFY_STEP_PX));
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      out.push(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
+    }
+  }
+  return out;
+}
+
 /** 시작점과 끝점(0-1 정규화 좌표)으로 도형의 외곽선 점 배열을 만든다.
  * 정규화 좌표는 가로/세로 비율이 다르므로(교재 쪽은 정사각형이 아님), 화살촉처럼
  * 각도가 중요한 도형은 실제 캔버스 픽셀 비율(canvasW/canvasH)로 잠깐 환산해서
@@ -23,13 +48,13 @@ function buildShapePoints(
 ): number[] {
   const [sx, sy] = start;
   const [ex, ey] = end;
-  if (kind === "line") return [sx, sy, ex, ey];
-  if (kind === "rectangle") return [sx, sy, ex, sy, ex, ey, sx, ey, sx, sy];
-  if (kind === "triangle") {
+  let points: number[];
+  if (kind === "line") points = [sx, sy, ex, ey];
+  else if (kind === "rectangle") points = [sx, sy, ex, sy, ex, ey, sx, ey, sx, sy];
+  else if (kind === "triangle") {
     const topMidX = (sx + ex) / 2;
-    return [topMidX, sy, ex, ey, sx, ey, topMidX, sy];
-  }
-  if (kind === "arrow") {
+    points = [topMidX, sy, ex, ey, sx, ey, topMidX, sy];
+  } else if (kind === "arrow") {
     const dxPix = (ex - sx) * canvasW;
     const dyPix = (ey - sy) * canvasH;
     const len = Math.hypot(dxPix, dyPix) || 1;
@@ -47,20 +72,21 @@ function buildShapePoints(
     const wing1y = ey + (w1y * headLenPix) / canvasH;
     const wing2x = ex + (w2x * headLenPix) / canvasW;
     const wing2y = ey + (w2y * headLenPix) / canvasH;
-    return [sx, sy, ex, ey, wing1x, wing1y, ex, ey, wing2x, wing2y];
+    points = [sx, sy, ex, ey, wing1x, wing1y, ex, ey, wing2x, wing2y];
+  } else {
+    // circle/ellipse: start~end 사이 사각형에 내접하는 타원
+    const cx = (sx + ex) / 2;
+    const cy = (sy + ey) / 2;
+    const rx = Math.abs(ex - sx) / 2;
+    const ry = Math.abs(ey - sy) / 2;
+    points = [];
+    const steps = 40;
+    for (let i = 0; i <= steps; i++) {
+      const angle = (i / steps) * Math.PI * 2;
+      points.push(cx + rx * Math.cos(angle), cy + ry * Math.sin(angle));
+    }
   }
-  // circle/ellipse: start~end 사이 사각형에 내접하는 타원
-  const cx = (sx + ex) / 2;
-  const cy = (sy + ey) / 2;
-  const rx = Math.abs(ex - sx) / 2;
-  const ry = Math.abs(ey - sy) / 2;
-  const points: number[] = [];
-  const steps = 40;
-  for (let i = 0; i <= steps; i++) {
-    const angle = (i / steps) * Math.PI * 2;
-    points.push(cx + rx * Math.cos(angle), cy + ry * Math.sin(angle));
-  }
-  return points;
+  return densifyPolyline(points, canvasW, canvasH);
 }
 
 export interface AnnotationLayerHandle {
@@ -68,6 +94,13 @@ export interface AnnotationLayerHandle {
   redo: () => void;
   clear: () => void;
   getCanvas: () => HTMLCanvasElement | null;
+  /** 두 쪽 보기에서 옆 쪽으로 넘어간 획(자유롭게 그린 선이나 도형의 일부)을 이
+   * 쪽에 이어서 그려 넣는다. clientPoints는 화면 좌표([x1,y1,x2,y2,...])라서, 각
+   * 쪽이 자기 캔버스 기준으로 알아서 변환해 정확히 이어붙는다. */
+  commitExternalPoints: (
+    clientPoints: number[],
+    meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number },
+  ) => void;
 }
 
 const PENCIL_COLOR = "#52525b"; // 연필은 항상 회색 연필 느낌으로 고정
@@ -128,6 +161,41 @@ function eraseAtPoint(
   return result;
 }
 
+/** 두 쪽 보기에서 한 획이 쪽 경계(boundaryFx: 왼쪽 이웃이면 0, 오른쪽 이웃이면 1)를
+ * 넘나들 때, 이 쪽 안쪽(self)과 이웃 쪽으로 넘어간 부분(other)으로 잘라 나눈다.
+ * (여러 번 왔다갔다 했으면 조각이 여러 개가 된다.) 경계를 지나는 지점을 정확히
+ * 계산해 양쪽 끝에 같이 넣어 두어, 두 쪽에 나눠 그려도 이어붙는 자리가 어긋나지
+ * 않는다. */
+function splitPointsByBoundary(
+  points: number[],
+  boundaryFx: 0 | 1,
+): { self: boolean; points: number[] }[] {
+  const isSelf = (x: number) => (boundaryFx === 1 ? x <= 1 : x >= 0);
+  const runs: { self: boolean; points: number[] }[] = [];
+  let cur: { self: boolean; points: number[] } | null = null;
+  for (let i = 0; i < points.length; i += 2) {
+    const x = points[i];
+    const y = points[i + 1];
+    const self = isSelf(x);
+    if (cur && cur.self !== self) {
+      const prevX: number = cur.points[cur.points.length - 2];
+      const prevY: number = cur.points[cur.points.length - 1];
+      const denom = x - prevX;
+      const t = denom === 0 ? 0 : (boundaryFx - prevX) / denom;
+      const crossX: number = boundaryFx;
+      const crossY: number = prevY + (y - prevY) * t;
+      cur.points.push(crossX, crossY);
+      runs.push(cur);
+      cur = { self, points: [crossX, crossY] };
+    } else if (!cur) {
+      cur = { self, points: [] };
+    }
+    cur.points.push(x, y);
+  }
+  if (cur) runs.push(cur);
+  return runs;
+}
+
 /** 쪽 번호별 실행취소 기록을 Map에서 가져오거나, 없으면 새로 만들어 등록한다. */
 function getPageHistory(map: Map<number, Stroke[][]>, page: number): Stroke[][] {
   let arr = map.get(page);
@@ -174,6 +242,10 @@ export const AnnotationLayer = forwardRef<
     /** 색펜(볼펜/형광펜/색연필/사인펜)의 굵기·투명도. 도형/연필에는 영향을 주지 않는다. */
     penWidth?: number;
     penAlpha?: number;
+    /** 두 쪽 보기에서 이 쪽의 옆(경계) 너머로 그은 부분을 넘겨줄 옆 쪽. boundaryFx는
+     * 이 쪽 기준 경계 위치(왼쪽 이웃이면 0, 오른쪽 이웃이면 1)다. 한 쪽 보기이거나
+     * 이 쪽이 스프레드의 끝이라 옆 쪽이 없으면 undefined. */
+    neighborAnnotation?: { boundaryFx: 0 | 1; getHandle: () => AnnotationLayerHandle | null };
   }
 >(function AnnotationLayer(
   {
@@ -194,6 +266,7 @@ export const AnnotationLayer = forwardRef<
     persist = true,
     penWidth = 2.5,
     penAlpha = 1,
+    neighborAnnotation,
   },
   ref,
 ) {
@@ -248,6 +321,21 @@ export const AnnotationLayer = forwardRef<
         commit([]);
       },
       getCanvas: () => canvasRef.current,
+      commitExternalPoints: (clientPoints, meta) => {
+        if (readOnly) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const points: number[] = [];
+        for (let i = 0; i < clientPoints.length; i += 2) {
+          const [x, y] = toLocal(clientPoints[i], clientPoints[i + 1]);
+          points.push(x / canvas.width, y / canvas.height);
+        }
+        if (points.length < 4) return;
+        commit([
+          ...strokesRef.current,
+          { tool: meta.tool as "pen" | "colorPen", color: meta.color, width: meta.width, alpha: meta.alpha, points },
+        ]);
+      },
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [uid, textbookId, page, readOnly, persist],
@@ -291,6 +379,51 @@ export const AnnotationLayer = forwardRef<
 
   const strokeWidth = tool === "colorPen" ? penWidth : isShapeTool(tool) ? 2.5 : 1.4;
   const strokeAlpha = tool === "colorPen" ? penAlpha : 1;
+
+  /** 이 쪽 경계 안에서 끝난 획은 그대로 커밋하고, 두 쪽 보기에서 옆 쪽 경계 너머로
+   * 넘어간 획은 넘어간 부분만큼 옆 쪽에도 같이 커밋해서, 볼펜이나 도형을 두 쪽에
+   * 걸쳐 자연스럽게 이어 그릴 수 있게 한다. */
+  const commitAcrossBoundary = (
+    points: number[],
+    meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number },
+  ) => {
+    if (!neighborAnnotation) {
+      commit([
+        ...strokesRef.current,
+        { tool: meta.tool as "pen" | "colorPen", color: meta.color, width: meta.width, alpha: meta.alpha, points },
+      ]);
+      return;
+    }
+    const runs = splitPointsByBoundary(points, neighborAnnotation.boundaryFx);
+    const selfRuns = runs.filter((r) => r.self && r.points.length >= 4);
+    const otherRuns = runs.filter((r) => !r.self && r.points.length >= 4);
+    if (selfRuns.length > 0) {
+      commit([
+        ...strokesRef.current,
+        ...selfRuns.map((r) => ({
+          tool: meta.tool as "pen" | "colorPen",
+          color: meta.color,
+          width: meta.width,
+          alpha: meta.alpha,
+          points: r.points,
+        })),
+      ]);
+    }
+    if (otherRuns.length > 0) {
+      const canvas = canvasRef.current;
+      const neighbor = neighborAnnotation.getHandle();
+      if (canvas && neighbor) {
+        const rect = canvas.getBoundingClientRect();
+        otherRuns.forEach((r) => {
+          const clientPoints: number[] = [];
+          for (let i = 0; i < r.points.length; i += 2) {
+            clientPoints.push(rect.left + r.points[i] * rect.width, rect.top + r.points[i + 1] * rect.height);
+          }
+          neighbor.commitExternalPoints(clientPoints, meta);
+        });
+      }
+    }
+  };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (readOnly || tool === "none") return;
@@ -362,14 +495,14 @@ export const AnnotationLayer = forwardRef<
       shapeStart.current = null;
       shapeDraft.current = null;
       if (!points || points.length < 4) return;
-      commit([...strokes, { tool: "colorPen", color, width: strokeWidth, alpha: 1, points }]);
+      commitAcrossBoundary(points, { tool: "colorPen", color, width: strokeWidth, alpha: 1 });
       return;
     }
     if (!drawing.current) return;
     const points = drawing.current;
     drawing.current = null;
     if (points.length < 4) return; // ignore accidental taps
-    commit([...strokes, { tool: tool as "pen" | "colorPen", color, width: strokeWidth, alpha: strokeAlpha, points }]);
+    commitAcrossBoundary(points, { tool: tool as DrawTool, color, width: strokeWidth, alpha: strokeAlpha });
   };
 
   const interactive = !readOnly && tool !== "none";

@@ -15,6 +15,7 @@ export interface BookPageHandle {
   undo: () => void;
   redo: () => void;
   captureDataUrl: () => string | null;
+  getAnnotationHandle: () => AnnotationLayerHandle | null;
 }
 
 interface BookPageProps {
@@ -47,6 +48,12 @@ interface BookPageProps {
   onCreateNote: (x: number, y: number) => void;
   onSelectNote: (id: string) => void;
   onMoveNote: (id: string, x: number, y: number) => void;
+  /** 지우개가 메모 위를 지나가면 그 메모를 통째로 지운다(실수로 지웠으면 undo로
+   * 되살릴 수 있다). 없으면 지우개는 필기만 지운다. */
+  onDeleteNote?: (id: string) => void;
+  /** 두 쪽 보기에서 옆 쪽으로 넘어간 획을 이어 그릴 수 있도록 옆 쪽의
+   * AnnotationLayer를 알려준다. 한 쪽 보기거나 스프레드 끝이면 undefined. */
+  neighborAnnotation?: { boundaryFx: 0 | 1; getHandle: () => AnnotationLayerHandle | null };
   onActivateZone: (
     zone: ActivityZone,
     el: HTMLDivElement,
@@ -85,6 +92,8 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     onCreateNote,
     onSelectNote,
     onMoveNote,
+    onDeleteNote,
+    neighborAnnotation,
     onActivateZone,
     onPageReady,
   },
@@ -104,6 +113,12 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
   // 표시. 마우스는 hover로 미리 보이니 바로 확대하지만, 터치는 hover가 없어서 한 번 더
   // 눌러야 확대되게 한다. 세 종류(zones/subZones/images) 중 하나만 켜져 있을 수 있다.
   const [armedKey, setArmedKey] = useState<string | null>(null);
+  // 지우개가 이미 지운 메모를 같은 드래그 중에 또 지우려 하지 않도록(중복 undo
+  // 기록 방지) 이번 지우개질에서 지운 메모 id를 기억해 둔다.
+  const erasedNoteIdsRef = useRef<Set<string>>(new Set());
+  // 지우개 원(화면에 보이는 크기)에서 살짝 더 넉넉하게 잡아야, 작은 메모 아이콘도
+  // 정확히 겨냥하지 않아도 자연스럽게 지워진다.
+  const NOTE_ERASE_PADDING = 16;
 
   useImperativeHandle(
     ref,
@@ -123,11 +138,26 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
         if (annoCanvas) ctx.drawImage(annoCanvas, 0, 0, out.width, out.height);
         return out.toDataURL("image/png");
       },
+      getAnnotationHandle: () => annotationRef.current,
     }),
     [],
   );
 
   const drawTool = tool === "note" ? "none" : tool;
+
+  const eraseNotesAt = (clientX: number, clientY: number, rect: DOMRect) => {
+    if (tool !== "eraser" || readOnly || !onDeleteNote) return;
+    for (const note of noteItems) {
+      const nx = rect.left + note.x * rect.width;
+      const ny = rect.top + note.y * rect.height;
+      if (Math.hypot(clientX - nx, clientY - ny) <= eraserSize + NOTE_ERASE_PADDING) {
+        if (!erasedNoteIdsRef.current.has(note.id)) {
+          erasedNoteIdsRef.current.add(note.id);
+          onDeleteNote(note.id);
+        }
+      }
+    }
+  };
 
   // 확대가 실제로 시작되면(터치로 두 번째 눌러서 확정하든, 마우스로 바로 누르든)
   // 남아있던 "이 부분 맞아요?" 표시/아이콘은 지운다.
@@ -140,7 +170,17 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     <div
       className="relative overflow-hidden bg-white shadow-inner"
       style={{ width: boxWidth, height: boxHeight }}
-      onPointerDown={() => setArmedKey(null)}
+      onPointerDown={(e) => {
+        setArmedKey(null);
+        erasedNoteIdsRef.current.clear();
+        eraseNotesAt(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
+      }}
+      onPointerMove={(e) => {
+        if (e.buttons & 1) eraseNotesAt(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
+      }}
+      onPointerUp={() => {
+        erasedNoteIdsRef.current.clear();
+      }}
     >
       <PdfPageCanvas
         ref={pdfCanvasRef}
@@ -186,6 +226,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
         persist={persist}
         penWidth={penWidth}
         penAlpha={penAlpha}
+        neighborAnnotation={neighborAnnotation}
       />
       {showNotes && (
         <NotesOverlay

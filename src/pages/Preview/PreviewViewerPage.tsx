@@ -186,6 +186,7 @@ export default function PreviewViewerPage() {
     minZoom: 1,
     maxZoom: MAX_ZOOM,
     enabled: !whiteboardMode && !magnifierMode && tool === "none",
+    wheelEnabled: !whiteboardMode && !magnifierMode,
   });
 
   const pagesToShow = useMemo(() => {
@@ -643,14 +644,18 @@ export default function PreviewViewerPage() {
     const next = current.map((n) => (n.id === id ? { ...n, x, y } : n));
     setNotesByPage((prev) => new Map(prev).set(page, next));
   };
-  const handleDeleteNote = (id: string) => {
+  /** 지우개가 메모 위를 지나갈 때도 이 함수로 지운다 - 그때는 지금 노트창이
+   * 열어 둔 쪽(activeNotePage)이 아니라 실제로 메모가 있는 그 쪽에서 지워야 하므로
+   * 쪽 번호를 직접 받는다. */
+  const handleDeleteNoteOnPage = (page: number, id: string) => {
     commitNoteEditSession();
-    const current = notesByPage.get(activeNotePage) ?? [];
-    pushNoteHistory(activeNotePage, current);
+    const current = notesByPage.get(page) ?? [];
+    pushNoteHistory(page, current);
     const next = current.filter((n) => n.id !== id);
-    setNotesByPage((prev) => new Map(prev).set(activeNotePage, next));
+    setNotesByPage((prev) => new Map(prev).set(page, next));
     if (activeNoteId === id) setActiveNoteId(null);
   };
+  const handleDeleteNote = (id: string) => handleDeleteNoteOnPage(activeNotePage, id);
 
   if (error) {
     return (
@@ -741,8 +746,12 @@ export default function PreviewViewerPage() {
           )}
 
           <div ref={containerRef} className="relative flex-1 overflow-hidden bg-slate-200">
-            {whiteboardMode ? (
-              <div className="absolute inset-0 flex items-center justify-center p-4">
+            {/* 화이트보드는 껐다 켜도 그린 게 남아 있어야 하므로, 조건부 렌더링으로
+                언마운트하지 않고 항상 같이 마운트해 둔 채 보이는 쪽만 바꾼다. */}
+            <div
+              className="absolute inset-0 flex items-center justify-center p-4"
+              style={{ display: whiteboardMode ? "flex" : "none" }}
+            >
                 <div
                   className="relative overflow-hidden rounded-xl bg-white shadow-2xl"
                   style={{
@@ -759,7 +768,7 @@ export default function PreviewViewerPage() {
                     renderHeight={Math.max(300, containerSize.h - CONTAINER_PADDING * 2)}
                     displayWidth={Math.max(300, containerSize.w - CONTAINER_PADDING * 2)}
                     displayHeight={Math.max(300, containerSize.h - CONTAINER_PADDING * 2)}
-                    tool={tool === "note" ? "none" : tool}
+                    tool={whiteboardMode && tool !== "note" ? tool : "none"}
                     color={color}
                     eraserSize={eraserSize}
                     readOnly={false}
@@ -770,9 +779,8 @@ export default function PreviewViewerPage() {
                     penAlpha={activePenStyle.alpha}
                   />
                 </div>
-              </div>
-            ) : (
-              <>
+            </div>
+            <div style={{ display: whiteboardMode ? "none" : "contents" }}>
                 <div ref={scrollRef} className="absolute inset-0 overflow-auto">
                   <div className="flex min-h-full p-1">
                     <div
@@ -783,7 +791,7 @@ export default function PreviewViewerPage() {
                       {viewMode === "spread" && pagesToShow.length === 1 && pagesToShow[0] === 1 && (
                         <div style={{ width: boxWidth, height: boxHeight }} />
                       )}
-                      {pagesToShow.map((n) => (
+                      {pagesToShow.map((n, idx) => (
                         <div key={n} className="relative" style={{ width: boxWidth, height: boxHeight }}>
                           <BookPage
                             ref={(el) => {
@@ -816,6 +824,20 @@ export default function PreviewViewerPage() {
                             onCreateNote={(x, y) => handleCreateNote(n, x, y)}
                             onSelectNote={(id) => handleSelectNote(n, id)}
                             onMoveNote={(id, x, y) => handleMoveNote(n, id, x, y)}
+                            onDeleteNote={(id) => handleDeleteNoteOnPage(n, id)}
+                            neighborAnnotation={
+                              viewMode === "spread" && pagesToShow.length === 2
+                                ? idx === 0
+                                  ? {
+                                      boundaryFx: 1,
+                                      getHandle: () => pageRefs.current.get(pagesToShow[1])?.getAnnotationHandle() ?? null,
+                                    }
+                                  : {
+                                      boundaryFx: 0,
+                                      getHandle: () => pageRefs.current.get(pagesToShow[0])?.getAnnotationHandle() ?? null,
+                                    }
+                                : undefined
+                            }
                             onActivateZone={handleActivateZone}
                             onPageReady={() => handlePageReady(n)}
                           />
@@ -849,8 +871,7 @@ export default function PreviewViewerPage() {
                 >
                   ▶
                 </button>
-              </>
-            )}
+            </div>
 
             {/* 쪽을 넘기면 그 쪽이 실제로 다 그려질 때까지(확대·스크롤이 버벅이지
                 않을 정도로 안정될 때까지) 가운데에 로딩 표시를 띄우고 조작을 막는다. */}

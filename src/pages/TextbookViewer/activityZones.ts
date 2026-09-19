@@ -1,12 +1,19 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { TextItem } from "pdfjs-dist/types/src/display/api";
 
-export interface ActivityZone {
+export interface Rect {
   // 쪽 안에서의 위치/크기 (0-1 정규화, 왼쪽 위 기준) - PageLink와 같은 좌표계
   x: number;
   y: number;
   w: number;
   h: number;
+}
+
+export interface ActivityZone {
+  // 실제로 누를 수 있는(hover/tap) 작은 영역 - 캐릭터 아이콘이나 번호 배지만큼만.
+  trigger: Rect;
+  // 확대됐을 때(또는 미리보기 테두리로) 보여줄 그 활동의 전체 범위.
+  target: Rect;
 }
 
 // "지구마을" 시리즈 전체에서 공통으로 쓰이는 활동 단계 라벨(캐릭터 아이콘 옆에 적힌 글자).
@@ -23,6 +30,18 @@ const BOTTOM_MARGIN = 22;
 // 헷갈리지 않도록, 바로 옆(같은 줄)에 숫자가 아닌 제목 글자가 있을 때만 인정한다.
 const NUMBER_MARKER_REGEX = /^[1-9][0-9]?$/;
 
+// 캐릭터 아이콘+라벨 글자를 덮는 정도의 작은 클릭 범위(라벨 왼쪽/위로 캐릭터가 있고,
+// 오른쪽으로 글자가 이어짐).
+const STEP_TRIGGER_LEFT_PAD = 14;
+const STEP_TRIGGER_WIDTH = 130;
+const STEP_TRIGGER_TOP_PAD = 44;
+const STEP_TRIGGER_BOTTOM_PAD = 14;
+// 숫자 배지 하나만 덮는 아주 작은 클릭 범위.
+const NUMBER_TRIGGER_LEFT_PAD = 8;
+const NUMBER_TRIGGER_WIDTH = 26;
+const NUMBER_TRIGGER_TOP_PAD = 15;
+const NUMBER_TRIGGER_BOTTOM_PAD = 7;
+
 interface Point {
   x: number;
   y: number;
@@ -38,18 +57,7 @@ function toLocal(items: TextItem[], viewport: { viewBox: number[] }) {
   }));
 }
 
-/** anchor(현재 항목)부터 다음 anchor 전까지를 하나의 확대 구간으로 만든다. */
-function buildZone(
-  anchor: Point,
-  prevY: number,
-  nextY: number,
-  left: number,
-  right: number,
-  viewport: { width: number; height: number },
-): ActivityZone | null {
-  const top = Math.min(anchor.y + TOP_PAD, anchor.y + (prevY - anchor.y) / 2);
-  const bottom = nextY;
-  if (top <= bottom) return null;
+function toRect(left: number, top: number, right: number, bottom: number, viewport: { width: number; height: number }): Rect {
   return {
     x: left / viewport.width,
     y: 1 - top / viewport.height,
@@ -58,14 +66,30 @@ function buildZone(
   };
 }
 
+/** anchor(현재 항목)부터 다음 anchor 전까지를 하나의 확대 구간(target)으로 만든다. */
+function buildTarget(
+  anchor: Point,
+  prevY: number,
+  nextY: number,
+  left: number,
+  right: number,
+  viewport: { width: number; height: number },
+): Rect | null {
+  const top = Math.min(anchor.y + TOP_PAD, anchor.y + (prevY - anchor.y) / 2);
+  const bottom = nextY;
+  if (top <= bottom) return null;
+  return toRect(left, top, right, bottom, viewport);
+}
+
 /**
  * 쪽 텍스트에서 "준비하기/활동하기/계획하기/실천하기/키워가기" 라벨의 위치를 찾아, 각
- * 라벨부터 다음 라벨(또는 쪽 끝) 전까지를 하나의 확대 구간(굵은 확대: 캐릭터를 누르면
- * 그 단계 전체가 확대됨)으로 묶는다. 그 안에 "1", "2"처럼 번호가 매겨진 세부 문항이
- * 있으면, 번호부터 다음 번호(또는 다음 단계) 전까지를 더 작은 확대 구간(캐릭터 없이
- * 번호만 있는 문항도 포함 - 예: "3 발표하기")으로 따로 만든다. 한 쪽에 좌/우 두 흐름이
- * 나란히 있을 수도 있어서, 가로 위치를 기준으로 좌/우 그룹으로 나눈 뒤 각 그룹 안에서만
- * 순서를 매긴다.
+ * 라벨부터 다음 라벨(또는 쪽 끝) 전까지를 하나의 확대 구간(target - 캐릭터를 누르면 그
+ * 단계 전체가 확대됨)으로 묶는다. 그 안에 "1", "2"처럼 번호가 매겨진 세부 문항이 있으면,
+ * 번호부터 다음 번호(또는 다음 단계) 전까지를 더 작은 확대 구간(캐릭터 없이 번호만 있는
+ * 문항도 포함 - 예: "3 발표하기")으로 따로 만든다. 실제로 누를 수 있는 범위(trigger)는
+ * 캐릭터 아이콘/번호 배지 부분만큼만 작게 잡아서, 그 옆 본문 내용을 눌렀을 때는(필기 등)
+ * 확대 테두리가 뜨지 않게 한다. 한 쪽에 좌/우 두 흐름이 나란히 있을 수도 있어서, 가로
+ * 위치를 기준으로 좌/우 그룹으로 나눈 뒤 각 그룹 안에서만 순서를 매긴다.
  */
 export async function detectActivityZones(
   pdf: PDFDocumentProxy,
@@ -116,8 +140,16 @@ export async function detectActivityZones(
     steps.forEach((header, i) => {
       const prevY = i === 0 ? viewport.height : steps[i - 1].y;
       const nextY = i === steps.length - 1 ? BOTTOM_MARGIN : steps[i + 1].y;
-      const zone = buildZone(header, prevY, nextY, left, right, viewport);
-      if (zone) zones.push(zone);
+      const target = buildTarget(header, prevY, nextY, left, right, viewport);
+      if (!target) return;
+      const trigger = toRect(
+        header.x - STEP_TRIGGER_LEFT_PAD,
+        header.y + STEP_TRIGGER_TOP_PAD,
+        header.x - STEP_TRIGGER_LEFT_PAD + STEP_TRIGGER_WIDTH,
+        header.y - STEP_TRIGGER_BOTTOM_PAD,
+        viewport,
+      );
+      zones.push({ trigger, target });
     });
 
     // 세부 문항 확대 구간은 "번호"와 "단계 라벨"을 모두 합쳐 순서대로 나열한 뒤, 번호
@@ -130,8 +162,16 @@ export async function detectActivityZones(
       if (!anchor.isNumber) return;
       const prevY = i === 0 ? viewport.height : combined[i - 1].y;
       const nextY = i === combined.length - 1 ? BOTTOM_MARGIN : combined[i + 1].y;
-      const zone = buildZone(anchor, prevY, nextY, left, right, viewport);
-      if (zone) subZones.push(zone);
+      const target = buildTarget(anchor, prevY, nextY, left, right, viewport);
+      if (!target) return;
+      const trigger = toRect(
+        anchor.x - NUMBER_TRIGGER_LEFT_PAD,
+        anchor.y + NUMBER_TRIGGER_TOP_PAD,
+        anchor.x - NUMBER_TRIGGER_LEFT_PAD + NUMBER_TRIGGER_WIDTH,
+        anchor.y - NUMBER_TRIGGER_BOTTOM_PAD,
+        viewport,
+      );
+      subZones.push({ trigger, target });
     });
   }
 

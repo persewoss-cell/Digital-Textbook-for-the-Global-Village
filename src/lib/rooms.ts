@@ -33,6 +33,7 @@ export async function createRoom(
     password,
     teacherName: teacherName.trim(),
     createdAt: Date.now(),
+    approved: false,
   };
   await setDoc(ref, data);
   return ref.id;
@@ -105,6 +106,11 @@ export async function removeParticipant(roomId: string, studentNum: number): Pro
 
 export async function updateRoomPassword(roomId: string, password: string): Promise<void> {
   await updateDoc(doc(db, "rooms", roomId), { password });
+}
+
+/** 관리자가 새로 만들어진 방을 승인해서 학생들이 방 목록에서 볼 수 있게 한다. */
+export async function approveRoom(roomId: string): Promise<void> {
+  await updateDoc(doc(db, "rooms", roomId), { approved: true });
 }
 
 const ROOM_SCOPED_COLLECTIONS = [

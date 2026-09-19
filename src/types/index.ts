@@ -12,6 +12,9 @@ export interface RoomDoc {
   password: string; // 선생님(관리)용 비밀번호. 학생 참여에는 쓰이지 않음
   teacherName: string;
   createdAt: number;
+  // 관리자가 승인하기 전까지는 학생 목록(방 찾기 화면)에 보이지 않는다. 선생님은
+  // 승인 전에도 관리 화면에 들어가 학생 등록 등을 미리 준비할 수 있다.
+  approved: boolean;
 }
 
 export interface ParticipantDoc {

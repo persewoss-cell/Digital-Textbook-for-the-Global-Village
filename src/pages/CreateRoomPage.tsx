@@ -50,7 +50,8 @@ export default function CreateRoomPage() {
           <div className="mb-2 text-4xl">🏫</div>
           <h1 className="text-xl font-extrabold text-brand-800">반 방 만들기</h1>
           <p className="mt-1 text-sm text-slate-500">
-            학년/반을 정하고 비밀번호를 만들면, 학생들이 그 비밀번호로 들어올 수 있어요.
+            학년/반을 정하고 비밀번호를 만들면 방이 생겨요. 관리자가 승인해야 학생들이 방
+            목록에서 찾아 들어올 수 있어요.
           </p>
         </div>
 

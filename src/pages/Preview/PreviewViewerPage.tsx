@@ -23,7 +23,7 @@ import { usePinchZoom } from "@/pages/TextbookViewer/usePinchZoom";
 import type { ActivityZone } from "@/pages/TextbookViewer/activityZones";
 
 const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 4;
+const MAX_ZOOM = 8;
 const PAGE_GAP = 0;
 const CONTAINER_PADDING = 4;
 const FIT_SAFETY_MARGIN = 6;
@@ -403,8 +403,18 @@ export default function PreviewViewerPage() {
     setMagnifierMode(false);
   };
 
-  const handleActivateZone = (zone: ActivityZone, el: HTMLDivElement) => {
-    zoomToRect(zone.w, zone.h, el);
+  const handleActivateZone = (zone: ActivityZone, el: HTMLDivElement, pageNumber: number) => {
+    if (viewMode === "spread") {
+      setViewMode("single");
+      setCurrentPage(pageNumber);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          zoomToRect(zone.target.w, zone.target.h, el);
+        });
+      });
+      return;
+    }
+    zoomToRect(zone.target.w, zone.target.h, el);
   };
 
   const handleCapture = () => {

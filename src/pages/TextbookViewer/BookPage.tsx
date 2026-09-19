@@ -45,7 +45,7 @@ interface BookPageProps {
   onCreateNote: (x: number, y: number) => void;
   onSelectNote: (id: string) => void;
   onMoveNote: (id: string, x: number, y: number) => void;
-  onActivateZone: (zone: ActivityZone, el: HTMLDivElement) => void;
+  onActivateZone: (zone: ActivityZone, el: HTMLDivElement, pageNumber: number) => void;
 }
 
 export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookPage(
@@ -120,7 +120,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
   // 남아있던 "이 부분 맞아요?" 표시/아이콘은 지운다.
   const handleActivate = (zone: ActivityZone, el: HTMLDivElement) => {
     setArmedKey(null);
-    onActivateZone(zone, el);
+    onActivateZone(zone, el, pageNumber);
   };
 
   return (
@@ -199,11 +199,11 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
         onArm={setArmedKey}
         onActivate={handleActivate}
       />
-      {/* ImageRegion과 ActivityZone은 모양이 같아서(x,y,w,h) 사진도 활동 단계와 같은
-          확대 구간으로 다룬다 - 팝업으로 잘라 보여주면 화질이 나빠지니, 교재 자체를
-          확대해서 화면에 꽉 차게 보여준다. */}
+      {/* 사진도 활동 단계와 같은 확대 구간으로 다룬다 - 팝업으로 잘라 보여주면 화질이
+          나빠지니, 교재 자체를 확대해서 화면에 꽉 차게 보여준다. 사진은 캐릭터/번호처럼
+          트리거를 따로 좁힐 필요가 없어서 trigger=target으로 그대로 쓴다. */}
       <ActivityZoneOverlay
-        zones={images}
+        zones={images.map((r) => ({ trigger: r, target: r }))}
         interactive={tool === "none"}
         armedKey={armedKey}
         prefix="img"

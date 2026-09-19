@@ -8,7 +8,7 @@ import {
   watchAllTextbooks,
 } from "@/lib/firestore";
 import { extractRealChapters, getPdfPageCountFromBuffer, loadPdf, suggestChapters } from "@/lib/pdf";
-import { watchRooms } from "@/lib/rooms";
+import { approveRoom, watchRooms } from "@/lib/rooms";
 import { isAdminUnlocked, markAdminUnlocked, clearAdminUnlock } from "@/lib/session";
 import { GRADES, type ChapterMeta, type Grade, type RoomDoc, type TextbookDoc } from "@/types";
 
@@ -280,6 +280,7 @@ function RoomsSection() {
           <tr>
             <th className="px-3 py-2">학급</th>
             <th className="px-3 py-2">선생님</th>
+            <th className="px-3 py-2">승인</th>
             <th className="px-3 py-2" />
           </tr>
         </thead>
@@ -290,6 +291,20 @@ function RoomsSection() {
                 {r.grade}학년 {r.classNum}반
               </td>
               <td className="px-3 py-2 text-sm text-slate-500">{r.teacherName}</td>
+              <td className="px-3 py-2">
+                {r.approved ? (
+                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-600">
+                    승인됨
+                  </span>
+                ) : (
+                  <button
+                    className="btn-primary px-2 py-1 text-xs"
+                    onClick={() => approveRoom(r.id)}
+                  >
+                    승인하기
+                  </button>
+                )}
+              </td>
               <td className="px-3 py-2 text-right">
                 <Link className="btn-secondary text-xs" to={`/room/${r.id}/manage`}>
                   관리 화면 열기
@@ -299,7 +314,7 @@ function RoomsSection() {
           ))}
           {rooms.length === 0 && (
             <tr>
-              <td colSpan={3} className="px-3 py-6 text-center text-sm text-slate-400">
+              <td colSpan={4} className="px-3 py-6 text-center text-sm text-slate-400">
                 만들어진 방이 없어요.
               </td>
             </tr>

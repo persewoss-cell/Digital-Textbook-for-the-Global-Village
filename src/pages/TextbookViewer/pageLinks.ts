@@ -15,7 +15,11 @@ export interface PageLink {
   h: number;
 }
 
-const URL_REGEX = /(https?:\/\/[^\s"'<>]+|www\.[a-z0-9-]+\.[a-z]{2,}[^\s"'<>]*)/gi;
+// PDF에서는 링크 바로 뒤에 공백 없이 다음 한글 문장이 이어 붙는 경우가 있어서, 문자
+// 제외 목록에 한글(자모/완성형)도 넣어야 링크 끝에 다음 문장 글자가 같이 붙들려 와서
+// 실제로는 존재하지 않는(깨진) 주소가 되는 걸 막을 수 있다.
+const URL_REGEX =
+  /(https?:\/\/[^\s"'<>ㄱ-ㆎ가-힣]+|www\.[a-z0-9-]+\.[a-z]{2,}[^\s"'<>ㄱ-ㆎ가-힣]*)/gi;
 const VIDEO_HOST_REGEX = /(youtube\.com|youtu\.be|vimeo\.com)/i;
 
 function normalizeUrl(raw: string): string {

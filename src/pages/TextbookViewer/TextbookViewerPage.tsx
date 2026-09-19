@@ -35,7 +35,7 @@ import type { ActivityZone } from "./activityZones";
 
 const ZOOM_STEP = 0.2;
 const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 4;
+const MAX_ZOOM = 8;
 const PAGE_GAP = 0;
 const CONTAINER_PADDING = 4;
 const FIT_SAFETY_MARGIN = 6;
@@ -521,8 +521,21 @@ export default function TextbookViewerPage() {
     setMagnifierMode(false);
   };
 
-  const handleActivateZone = (zone: ActivityZone, el: HTMLDivElement) => {
-    zoomToRect(zone.w, zone.h, el);
+  const handleActivateZone = (zone: ActivityZone, el: HTMLDivElement, pageNumber: number) => {
+    // 두쪽 보기에서는 옆 쪽이 함께 보여서 확대해도 화면을 다 못 채우고 애매하게 보이니,
+    // 확대할 쪽 하나만 보이는 한쪽 보기로 바꾼 뒤(레이아웃이 다시 그려질 시간을 준 다음)
+    // 확대·스크롤한다.
+    if (viewMode === "spread") {
+      setViewMode("single");
+      setCurrentPage(pageNumber);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          zoomToRect(zone.target.w, zone.target.h, el);
+        });
+      });
+      return;
+    }
+    zoomToRect(zone.target.w, zone.target.h, el);
   };
 
   const handleCapture = () => {

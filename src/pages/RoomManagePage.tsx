@@ -329,6 +329,12 @@ export default function RoomManagePage() {
       }
     >
       <div className="mx-auto max-w-6xl">
+        {!room.approved && (
+          <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+            ⏳ 관리자 승인 대기 중이에요. 승인되면 학생들이 첫 화면 방 목록에서 이 방을 볼 수
+            있어요. 그동안 학생 등록 등은 미리 준비하실 수 있어요.
+          </p>
+        )}
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">

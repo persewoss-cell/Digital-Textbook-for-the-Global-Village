@@ -7,7 +7,6 @@ import { PageLinkOverlay } from "./PageLinkOverlay";
 import { detectPageLinks, type PageLink } from "./pageLinks";
 import { ActivityZoneOverlay } from "./ActivityZoneOverlay";
 import { detectActivityZones, type ActivityZone } from "./activityZones";
-import { ImageZoneOverlay } from "./ImageZoneOverlay";
 import { detectPageImages, type ImageRegion } from "./pageImages";
 import { MediaPopup } from "./MediaPopup";
 import type { AnnotationTool, PlacedNote, Stroke } from "@/types";
@@ -83,12 +82,15 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
   const [links, setLinks] = useState<PageLink[]>([]);
   const linkDetectSeq = useRef(0);
   const [zones, setZones] = useState<ActivityZone[]>([]);
+  const [subZones, setSubZones] = useState<ActivityZone[]>([]);
   const zoneDetectSeq = useRef(0);
   const [images, setImages] = useState<ImageRegion[]>([]);
   const imageDetectSeq = useRef(0);
-  const [popup, setPopup] = useState<{ type: "image"; dataUrl: string } | { type: "video"; embedUrl: string } | null>(
-    null,
-  );
+  const [popup, setPopup] = useState<{ type: "video"; embedUrl: string } | null>(null);
+  // 확대 구간(활동 단계/세부 문항/사진)을 터치로 처음 누르면 켜지는 "이 부분 맞아요?"
+  // 표시. 마우스는 hover로 미리 보이니 바로 확대하지만, 터치는 hover가 없어서 한 번 더
+  // 눌러야 확대되게 한다. 세 종류(zones/subZones/images) 중 하나만 켜져 있을 수 있다.
+  const [armedKey, setArmedKey] = useState<string | null>(null);
 
   useImperativeHandle(
     ref,
@@ -114,28 +116,18 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
 
   const drawTool = tool === "note" ? "none" : tool;
 
-  const handleActivateImage = (region: ImageRegion) => {
-    const canvas = pdfCanvasRef.current;
-    if (!canvas) return;
-    const sx = region.x * canvas.width;
-    const sy = region.y * canvas.height;
-    const sw = region.w * canvas.width;
-    const sh = region.h * canvas.height;
-    const out = document.createElement("canvas");
-    out.width = sw;
-    out.height = sh;
-    const ctx = out.getContext("2d");
-    if (!ctx) return;
-    // 이미 화면에 렌더링된(최대 해상도) 캔버스에서 해당 영역만 그대로 잘라내므로,
-    // PDF 이미지를 색공간/디코딩까지 다시 처리할 필요 없이 화질 그대로 크게 보여줄 수 있다.
-    ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-    setPopup({ type: "image", dataUrl: out.toDataURL("image/png") });
+  // 확대가 실제로 시작되면(터치로 두 번째 눌러서 확정하든, 마우스로 바로 누르든)
+  // 남아있던 "이 부분 맞아요?" 표시/아이콘은 지운다.
+  const handleActivate = (zone: ActivityZone, el: HTMLDivElement) => {
+    setArmedKey(null);
+    onActivateZone(zone, el);
   };
 
   return (
     <div
       className="relative overflow-hidden bg-white shadow-inner"
       style={{ width: boxWidth, height: boxHeight }}
+      onPointerDown={() => setArmedKey(null)}
     >
       <PdfPageCanvas
         ref={pdfCanvasRef}
@@ -149,8 +141,11 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
             if (linkDetectSeq.current === seq) setLinks(found);
           });
           const zseq = ++zoneDetectSeq.current;
-          detectActivityZones(pdf, pageNumber).then((found) => {
-            if (zoneDetectSeq.current === zseq) setZones(found);
+          detectActivityZones(pdf, pageNumber).then(({ zones: found, subZones: foundSub }) => {
+            if (zoneDetectSeq.current === zseq) {
+              setZones(found);
+              setSubZones(foundSub);
+            }
           });
           const iseq = ++imageDetectSeq.current;
           detectPageImages(pdf, pageNumber, pdfCanvasRef.current).then((found) => {
@@ -188,18 +183,38 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
           onMove={onMoveNote}
         />
       )}
-      <ActivityZoneOverlay zones={zones} interactive={tool === "none"} onActivate={onActivateZone} />
-      <ImageZoneOverlay regions={images} interactive={tool === "none"} onActivate={handleActivateImage} />
+      <ActivityZoneOverlay
+        zones={zones}
+        interactive={tool === "none"}
+        armedKey={armedKey}
+        prefix="step"
+        onArm={setArmedKey}
+        onActivate={handleActivate}
+      />
+      <ActivityZoneOverlay
+        zones={subZones}
+        interactive={tool === "none"}
+        armedKey={armedKey}
+        prefix="sub"
+        onArm={setArmedKey}
+        onActivate={handleActivate}
+      />
+      {/* ImageRegion과 ActivityZone은 모양이 같아서(x,y,w,h) 사진도 활동 단계와 같은
+          확대 구간으로 다룬다 - 팝업으로 잘라 보여주면 화질이 나빠지니, 교재 자체를
+          확대해서 화면에 꽉 차게 보여준다. */}
+      <ActivityZoneOverlay
+        zones={images}
+        interactive={tool === "none"}
+        armedKey={armedKey}
+        prefix="img"
+        onArm={setArmedKey}
+        onActivate={handleActivate}
+      />
       <PageLinkOverlay
         links={links}
         interactive={tool === "none"}
         onOpenVideo={(embedUrl) => setPopup({ type: "video", embedUrl })}
       />
-      {popup?.type === "image" && (
-        <MediaPopup onClose={() => setPopup(null)}>
-          <img src={popup.dataUrl} className="max-h-[90vh] max-w-[90vw] rounded-lg shadow-2xl" alt="" />
-        </MediaPopup>
-      )}
       {popup?.type === "video" && (
         <MediaPopup onClose={() => setPopup(null)}>
           <iframe

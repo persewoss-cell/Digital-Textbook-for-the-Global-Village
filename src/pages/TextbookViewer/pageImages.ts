@@ -89,6 +89,11 @@ export async function detectPageImages(
     Promise.resolve(page.getViewport({ scale: 1 })),
   ]);
 
+  // 스프레드의 오른쪽 쪽은 원점이 0이 아닌 별도 좌표 공간을 쓰기도 해서(viewBox[0]이
+  // 0이 아님), 이 쪽만의 좌표(0부터 시작)로 옮겨서 계산해야 오른쪽 쪽에서도 위치가
+  // 맞는다.
+  const [vx0, vy0] = viewport.viewBox;
+
   const regions: ImageRegion[] = [];
   let ctm: Matrix = IDENTITY;
   const stack: Matrix[] = [];
@@ -109,8 +114,8 @@ export async function detectPageImages(
         apply(ctm, 0, 1),
         apply(ctm, 1, 1),
       ];
-      const xs = corners.map((p) => p[0]);
-      const ys = corners.map((p) => p[1]);
+      const xs = corners.map((p) => p[0] - vx0);
+      const ys = corners.map((p) => p[1] - vy0);
       const x0 = Math.min(...xs);
       const x1 = Math.max(...xs);
       const y0 = Math.min(...ys);

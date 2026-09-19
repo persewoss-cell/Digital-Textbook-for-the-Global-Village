@@ -4,9 +4,9 @@ import type { TextItem } from "pdfjs-dist/types/src/display/api";
 
 export interface PageLink {
   // "url": 그냥 웹 링크(새 창으로 열기). "video": 유튜브 등 임베드 가능한 동영상
-  // (팝업 안에 재생 화면을 띄움). "citation": 링크/QR 없이 "*출처: OOO"만 적혀 있는
-  // 경우(눌렀을 때 그 출처를 새 창에서 검색해 보여줌).
-  kind: "url" | "video" | "citation";
+  // (팝업 안에 재생 화면을 띄움). 실제 링크나 QR이 있는 경우에만 새 창/팝업을 쓰고,
+  // 사진이나 출처 표기처럼 링크가 없는 것들은 건드리지 않는다(사진은 확대 기능으로).
+  kind: "url" | "video";
   url: string;
   // 쪽 안에서의 위치/크기 (0-1 정규화, 왼쪽 위 기준)
   x: number;
@@ -17,8 +17,6 @@ export interface PageLink {
 
 const URL_REGEX = /(https?:\/\/[^\s"'<>]+|www\.[a-z0-9-]+\.[a-z]{2,}[^\s"'<>]*)/gi;
 const VIDEO_HOST_REGEX = /(youtube\.com|youtu\.be|vimeo\.com)/i;
-// "*출처: OOO", "출처: OOO" 처럼 링크/QR 없이 글로만 적힌 출처 표기를 찾는다.
-const CITATION_REGEX = /^\*?\s*(?:영상\s*)?출처\s*[:：]\s*(.+)$/;
 
 function normalizeUrl(raw: string): string {
   return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
@@ -49,25 +47,26 @@ export function toEmbeddableUrl(url: string): string | null {
   return null;
 }
 
-/**
- * 쪽 텍스트에 그대로 적힌 http(s):// 링크를 찾아 클릭 가능한 영역으로 만든다. 링크가
- * 하나도 없는 줄에서 "출처: OOO"만 적혀 있으면(주로 영상 출처 표기), 눌렀을 때 그
- * 출처를 검색해 볼 수 있는 영역으로 만든다.
- */
+/** 쪽 텍스트에 그대로 적힌 http(s):// 링크를 찾아 클릭 가능한 영역으로 만든다. */
 async function detectTextLinks(pdf: PDFDocumentProxy, pageNumber: number): Promise<PageLink[]> {
   const page = await pdf.getPage(pageNumber);
   const [content, viewport] = await Promise.all([page.getTextContent(), Promise.resolve(page.getViewport({ scale: 1 }))]);
   const links: PageLink[] = [];
 
+  // 스프레드의 오른쪽 쪽은 원점이 0이 아닌 별도 좌표 공간을 쓰기도 해서(viewBox[0]이
+  // 0이 아님), 이 쪽만의 좌표(0부터 시작)로 옮겨서 계산해야 오른쪽 쪽에서도 위치가
+  // 맞는다.
+  const [vx0, vy0] = viewport.viewBox;
+
   for (const item of content.items) {
     if (!("str" in item) || !("transform" in item)) continue;
     const textItem = item as TextItem;
-    const str = textItem.str.trim();
     const matches = textItem.str.match(URL_REGEX);
+    if (!matches) continue;
 
     const h = Math.hypot(textItem.transform[2], textItem.transform[3]) || 10;
-    const x0 = textItem.transform[4];
-    const yBottom = textItem.transform[5];
+    const x0 = textItem.transform[4] - vx0;
+    const yBottom = textItem.transform[5] - vy0;
     const w = textItem.width || h * textItem.str.length * 0.5;
     const rect = {
       x: Math.max(0, x0 / viewport.width),
@@ -76,24 +75,9 @@ async function detectTextLinks(pdf: PDFDocumentProxy, pageNumber: number): Promi
       h: Math.min(1, h / viewport.height),
     };
 
-    if (matches) {
-      for (const raw of matches) {
-        const url = normalizeUrl(raw);
-        links.push({ kind: VIDEO_HOST_REGEX.test(url) ? "video" : "url", url, ...rect });
-      }
-      continue;
-    }
-
-    const citation = str.match(CITATION_REGEX);
-    if (citation) {
-      const query = citation[1].trim();
-      if (query) {
-        links.push({
-          kind: "citation",
-          url: `https://www.google.com/search?q=${encodeURIComponent(`${query} 영상`)}`,
-          ...rect,
-        });
-      }
+    for (const raw of matches) {
+      const url = normalizeUrl(raw);
+      links.push({ kind: VIDEO_HOST_REGEX.test(url) ? "video" : "url", url, ...rect });
     }
   }
 

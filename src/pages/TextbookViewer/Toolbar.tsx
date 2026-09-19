@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { PEN_STYLES, type AnnotationTool, type PenStyleId, type ShapeTool } from "@/types";
 import { SHAPE_TOOLS as SHAPE_TOOL_ORDER } from "./AnnotationLayer";
 
@@ -11,22 +11,21 @@ const SHAPE_META: Record<ShapeTool, { icon: string; title: string }> = {
 };
 const SHAPE_TOOLS = SHAPE_TOOL_ORDER.map((tool) => ({ tool, ...SHAPE_META[tool] }));
 
-/** 지우개인지 한눈에 보이도록, 비스듬히 놓인 사각 지우개 몸통 + 가운데를 가로지르는
- * 이음선 형태로 그린다(흔히 쓰는 지우개 아이콘들과 같은 실루엣). */
+/** 실제 지우개처럼 보이도록, 비스듬히 기울어진 알약(캡슐) 모양 몸통을 반은 회색,
+ * 반은 흰색으로 나눠 그린다(흔히 쓰는 지우개 아이콘과 같은 실루엣). */
 function EraserIcon({ className }: { className?: string }) {
+  const clipId = useId();
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <g transform="rotate(-25 12 12)">
-        <rect x="4" y="7" width="16" height="10" rx="2" />
-        <line x1="4" y1="12.5" x2="20" y2="12.5" />
+    <svg viewBox="0 0 24 24" className={className}>
+      <g transform="rotate(-40 12 12)">
+        <clipPath id={clipId}>
+          <rect x="3" y="8.5" width="18" height="7" rx="3.5" />
+        </clipPath>
+        <rect x="3" y="8.5" width="18" height="7" rx="3.5" fill="white" stroke="currentColor" strokeWidth="1.1" />
+        <g clipPath={`url(#${clipId})`}>
+          <rect x="3" y="8.5" width="10.5" height="7" fill="currentColor" fillOpacity="0.55" />
+        </g>
+        <rect x="3" y="8.5" width="18" height="7" rx="3.5" fill="none" stroke="currentColor" strokeWidth="1.1" />
       </g>
     </svg>
   );

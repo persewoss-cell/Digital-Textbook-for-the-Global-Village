@@ -27,6 +27,9 @@ const MAX_ZOOM = 8;
 const PAGE_GAP = 0;
 const CONTAINER_PADDING = 4;
 const FIT_SAFETY_MARGIN = 6;
+// 쪽을 처음 펼칠 때 PDF를 미리 그려 둘 기본 배율(줌=1 기준의 몇 배 해상도로).
+// 평소 읽기+약간의 확대까지는 이 정도면 충분히 선명하고, 태블릿에서도 부담 없다.
+const INITIAL_RENDER_ZOOM_CAP = 2;
 
 // 체험 모드는 방/학생 계정이 없으므로 uid는 저장에 쓰이지 않는 자리표시자일 뿐이다.
 const PREVIEW_UID = "preview";
@@ -241,10 +244,7 @@ export default function PreviewViewerPage() {
   };
 
   // fitWidth는 줌과 무관하게 "회색 영역에 꼭 맞는 기본 크기"다. 실제 보여줄 크기
-  // (boxWidth)는 여기에 zoom을 곱한 값이고, PdfPageCanvas가 한 번 그려 둘 최대
-  // 해상도 기준(maxBoxWidth)은 zoom이 가장 커질 수 있는 값(MAX_ZOOM)을 곱한 값이다
-  // — 줌이 바뀔 때마다 다시 그릴 필요 없이 항상 이미 그려 둔 것을 CSS로 늘리거나
-  // 줄이기만 하면 되므로, 손가락으로 확대·축소해도 매끄럽고 화질도 처음부터 최상이다.
+  // (boxWidth)는 여기에 zoom을 곱한 값이다.
   const fitWidth = useMemo(() => {
     const pageCount = layoutPageCount;
     const availW = Math.max(
@@ -257,7 +257,31 @@ export default function PreviewViewerPage() {
     return Math.max(120, Math.min(perPageMaxW, widthFromHeight));
   }, [containerSize, aspect, layoutPageCount]);
   const boxWidth = fitWidth * zoom;
-  const maxBoxWidth = fitWidth * MAX_ZOOM;
+  // PdfPageCanvas가 한 번 그려 둘 최대 해상도 기준. 예전에는 무조건 MAX_ZOOM(8배)
+  // 기준으로 미리 그려 뒀는데, 그러면 확대를 전혀 안 하고 그냥 넘겨보기만 해도
+  // 모든 쪽을 8배 해상도로 렌더링하게 되어(태블릿의 캔버스 메모리 한도를 계속
+  // 최대치로 채움) 로딩이 오래 걸리고 특히 태블릿에서 페이지를 넘기다 브라우저가
+  // 죽는 원인이 됐다. 대신 처음엔 평소 읽기에 충분한 배율로만 그려 두고, 실제로
+  // 그 배율을 넘어서게 확대할 때만(활동 확대, 돋보기, +버튼 등) 그때 필요한 만큼으로
+  // 한 번 더 그린다. 같은 쪽에 머무는 동안은 줄어들지 않고 늘어나기만 해서(확대했다
+  // 살짝 축소해도 다시 흐려지지 않음), 다른 쪽으로 넘어가면(currentPage 변경) 그
+  // 쪽에서 새로 판단하도록 초기화한다 - 안 그러면 어느 한 쪽에서 크게 확대해 본
+  // 뒤로는 계속 다른 모든 쪽까지 불필요하게 고해상도로 그려지게 된다.
+  const [renderZoomCap, setRenderZoomCap] = useState(INITIAL_RENDER_ZOOM_CAP);
+  // 쪽이 바뀐 걸 useEffect로 뒤늦게 알아채면, 새 쪽이 이미 예전 쪽의(높을 수 있는)
+  // 배율로 한 번 그려진 뒤에야 낮은 배율로 다시 그려져서 - 태블릿에 부담을 주는
+  // 비싼 고해상도 렌더링을 오히려 한 번 더 하게 된다. 그래서 렌더링 중에 바로
+  // 알아채서(리액트의 "렌더 중 상태 조정" 패턴) 새 쪽을 처음 그릴 때부터 바로
+  // 맞는 배율을 쓰게 한다.
+  const [renderCapPage, setRenderCapPage] = useState(currentPage);
+  if (renderCapPage !== currentPage) {
+    setRenderCapPage(currentPage);
+    setRenderZoomCap(Math.min(MAX_ZOOM, Math.max(INITIAL_RENDER_ZOOM_CAP, zoom)));
+  }
+  useEffect(() => {
+    setRenderZoomCap((cap) => Math.max(cap, Math.min(MAX_ZOOM, zoom)));
+  }, [zoom]);
+  const maxBoxWidth = fitWidth * renderZoomCap;
   const boxHeight = boxWidth * aspect;
   const spreadWidth = boxWidth * layoutPageCount + PAGE_GAP * (layoutPageCount - 1);
 
@@ -297,8 +321,34 @@ export default function PreviewViewerPage() {
     if (m === "spread") setCurrentPage((p) => spreadStart(p));
   };
 
+  // +/- 버튼으로 확대·축소할 때, 지금 화면 한가운데 보이던 지점이 계속 한가운데
+  // 있도록 스크롤을 보정한다(핀치줌이 손가락 사이 지점을 고정하는 것과 같은 원리).
+  // 이게 없으면 스크롤 위치(scrollLeft/Top)는 그대로인데 콘텐츠만 커져서, 이미
+  // 활동/그림을 확대해 본 상태에서 +/-를 누르면 화면이 그 콘텐츠의 왼쪽 위 방향으로
+  // 쏠려 보인다.
   const handleZoomChange = (delta: number) => {
+    const scrollEl = scrollRef.current;
+    const contentEl = contentRef.current;
+    if (!scrollEl || !contentEl) {
+      setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round((z + delta) * 100) / 100)));
+      return;
+    }
+    const containerRect = scrollEl.getBoundingClientRect();
+    const contentRectBefore = contentEl.getBoundingClientRect();
+    const cx = containerRect.left + containerRect.width / 2;
+    const cy = containerRect.top + containerRect.height / 2;
+    const fx = contentRectBefore.width > 0 ? (cx - contentRectBefore.left) / contentRectBefore.width : 0.5;
+    const fy = contentRectBefore.height > 0 ? (cy - contentRectBefore.top) / contentRectBefore.height : 0.5;
     setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round((z + delta) * 100) / 100)));
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const contentRectAfter = contentEl.getBoundingClientRect();
+        const targetX = contentRectAfter.left + fx * contentRectAfter.width;
+        const targetY = contentRectAfter.top + fy * contentRectAfter.height;
+        scrollEl.scrollLeft += targetX - cx;
+        scrollEl.scrollTop += targetY - cy;
+      });
+    });
   };
 
   const handleSearch = async (q: string) => {
@@ -398,6 +448,12 @@ export default function PreviewViewerPage() {
     rect: { x: number; y: number; w: number; h: number },
     pageEl: HTMLElement,
     align?: "left" | "right" | "center",
+    // rect의 x/y/w/h(0-1 비율)가 기준으로 삼는, 줌=1일 때의 너비/높이. 활동
+    // 단계/사진처럼 쪽 하나를 기준으로 한 비율이면 그 쪽의 fitWidth/fitWidth*aspect,
+    // 돋보기처럼 두 쪽이 나란한 스프레드 전체를 기준으로 한 비율이면 스프레드 전체의
+    // 줌=1 너비를 넘겨야 한다(기본값은 쪽 하나 기준).
+    unitWidth: number = fitWidth,
+    unitHeight: number = fitWidth * aspect,
   ) => {
     // 이 영역이 회색 화면(컨테이너)에 꽉 차도록 하는 배율을 "contain" 방식으로 구한다.
     // fitWidth(줌=1일 때 쪽 너비)는 컨테이너의 가로/세로 중 더 좁게 맞춰지는 쪽 기준이라
@@ -406,8 +462,8 @@ export default function PreviewViewerPage() {
     // 쪽(=잘리지 않는 쪽)을 택한다.
     const availW = Math.max(50, containerSize.w - CONTAINER_PADDING * 2 - FIT_SAFETY_MARGIN);
     const availH = Math.max(50, containerSize.h - CONTAINER_PADDING * 2 - FIT_SAFETY_MARGIN);
-    const zoomForWidth = availW / (rect.w * fitWidth);
-    const zoomForHeight = availH / (rect.h * fitWidth * aspect);
+    const zoomForWidth = availW / (rect.w * unitWidth);
+    const zoomForHeight = availH / (rect.h * unitHeight);
     const targetZoom = Math.min(MAX_ZOOM, zoomForWidth, zoomForHeight);
     setZoom(targetZoom);
     requestAnimationFrame(() => {
@@ -433,11 +489,23 @@ export default function PreviewViewerPage() {
     });
   };
 
-  const handleMagnifierConfirm = (el: HTMLDivElement) => {
-    const pageEl = (el.closest(".shadow-inner") as HTMLElement | null) ?? el;
+  const handleMagnifierConfirm = () => {
+    // 돋보기 박스는 (책 한 쪽이 아니라) 두 쪽이 나란한 스프레드 전체를 덮는 하나의
+    // 오버레이라서(MagnifierOverlay의 boxWidth={spreadWidth}), fx/fy/fw/fh는 그
+    // 스프레드 전체를 기준으로 한 비율이다. el(눌린 박스 자신)은 어떤 쪽의
+    // .shadow-inner 안에도 속하지 않는 형제 요소라 el.closest(".shadow-inner")로는
+    // 절대 페이지를 찾을 수 없고(항상 null), 대신 스프레드 전체를 담는 contentRef를
+    // 기준 요소로 써야 한다 - 아니면 el 자신(작은 돋보기 박스)이 기준이 되어 버려
+    // 완전히 엉뚱한 위치로 확대되는 문제가 있었다.
+    const pageEl = contentRef.current;
+    if (!pageEl) return;
+    const spreadUnitWidth = fitWidth * layoutPageCount + PAGE_GAP * (layoutPageCount - 1);
     zoomToRect(
       { x: magnifierRect.fx, y: magnifierRect.fy, w: magnifierRect.fw, h: magnifierRect.fh },
       pageEl,
+      undefined,
+      spreadUnitWidth,
+      fitWidth * aspect,
     );
     setMagnifierMode(false);
   };

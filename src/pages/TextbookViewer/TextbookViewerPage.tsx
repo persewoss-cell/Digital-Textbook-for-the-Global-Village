@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { AppShell } from "@/components/AppShell";
+import { PhoneScaleFit } from "@/components/PhoneScaleFit";
 import {
   getProgress,
   getTextbook,
@@ -752,26 +753,31 @@ export default function TextbookViewerPage() {
 
   if (error) {
     return (
-      <AppShell>
-        <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-500">
-          <p>{error}</p>
-          <button className="btn-secondary" onClick={() => navigate(-1)}>
-            돌아가기
-          </button>
-        </div>
-      </AppShell>
+      <PhoneScaleFit>
+        <AppShell>
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-500">
+            <p>{error}</p>
+            <button className="btn-secondary" onClick={() => navigate(-1)}>
+              돌아가기
+            </button>
+          </div>
+        </AppShell>
+      </PhoneScaleFit>
     );
   }
 
   if (!pdf || !textbook || !room || !effectiveUid) {
     return (
-      <AppShell>
-        <div className="flex h-full items-center justify-center text-slate-400">교재를 불러오는 중...</div>
-      </AppShell>
+      <PhoneScaleFit>
+        <AppShell>
+          <div className="flex h-full items-center justify-center text-slate-400">교재를 불러오는 중...</div>
+        </AppShell>
+      </PhoneScaleFit>
     );
   }
 
   return (
+    <PhoneScaleFit>
     <AppShell
       fullBleed
       badge={`${room.grade}학년 ${room.classNum}반 · ${readOnly ? (location.state?.studentName ?? "학생") : session?.name}`}
@@ -973,5 +979,6 @@ export default function TextbookViewerPage() {
         </div>
       </div>
     </AppShell>
+    </PhoneScaleFit>
   );
 }

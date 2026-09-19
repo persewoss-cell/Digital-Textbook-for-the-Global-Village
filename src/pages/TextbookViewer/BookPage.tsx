@@ -45,7 +45,12 @@ interface BookPageProps {
   onCreateNote: (x: number, y: number) => void;
   onSelectNote: (id: string) => void;
   onMoveNote: (id: string, x: number, y: number) => void;
-  onActivateZone: (zone: ActivityZone, el: HTMLDivElement, pageNumber: number) => void;
+  onActivateZone: (
+    zone: ActivityZone,
+    el: HTMLDivElement,
+    pageNumber: number,
+    kind: "step" | "sub" | "img",
+  ) => void;
 }
 
 export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookPage(
@@ -118,9 +123,9 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
 
   // 확대가 실제로 시작되면(터치로 두 번째 눌러서 확정하든, 마우스로 바로 누르든)
   // 남아있던 "이 부분 맞아요?" 표시/아이콘은 지운다.
-  const handleActivate = (zone: ActivityZone, el: HTMLDivElement) => {
+  const handleActivate = (zone: ActivityZone, el: HTMLDivElement, kind: "step" | "sub" | "img") => {
     setArmedKey(null);
-    onActivateZone(zone, el, pageNumber);
+    onActivateZone(zone, el, pageNumber, kind);
   };
 
   return (

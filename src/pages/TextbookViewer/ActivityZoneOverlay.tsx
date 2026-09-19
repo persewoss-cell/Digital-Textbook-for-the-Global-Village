@@ -37,9 +37,9 @@ export function ActivityZoneOverlay({
   zones: ActivityZone[];
   interactive: boolean;
   armedKey: string | null;
-  prefix: string;
+  prefix: "step" | "sub" | "img";
   onArm: (key: string) => void;
-  onActivate: (zone: ActivityZone, el: HTMLDivElement) => void;
+  onActivate: (zone: ActivityZone, el: HTMLDivElement, kind: "step" | "sub" | "img") => void;
 }) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const targetRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -48,7 +48,7 @@ export function ActivityZoneOverlay({
   // scrollIntoView는 "확대될 전체 범위(target)" 기준으로 해야, 작은 트리거만 화면
   // 가운데로 오는 게 아니라 활동 전체가 잘 보이게 스크롤된다.
   const activate = (zone: ActivityZone, key: string, fallback: HTMLDivElement) => {
-    onActivate(zone, targetRefs.current.get(key) ?? fallback);
+    onActivate(zone, targetRefs.current.get(key) ?? fallback, prefix);
   };
 
   return (

@@ -388,23 +388,45 @@ export default function PreviewViewerPage() {
     lastUndoneType.current = null;
   };
 
-  const zoomToRect = (w: number, h: number, el: HTMLElement, align?: "left" | "right") => {
-    const targetZoom = Math.min(MAX_ZOOM, 1 / Math.max(w, h));
+  // pageEl은 반드시 "확대해도 절대 사라지지 않는" 안정적인 요소여야 한다 - hover/누름
+  // 상태에 따라 조건부로 렌더링되는 미리보기 테두리 div 등을 넘기면, setZoom으로 인한
+  // 리렌더 사이에 그 요소가 DOM에서 떨어져 나가 getBoundingClientRect가 전부 0을
+  // 반환하면서 "항상 맨 위 왼쪽으로 확대되는" 버그가 생긴다. 그래서 실제 영역의 위치는
+  // DOM에서 다시 재는 대신, 이미 알고 있는 비율(rect)과 페이지 요소의 현재 크기로
+  // 계산한다.
+  const zoomToRect = (
+    rect: { x: number; y: number; w: number; h: number },
+    pageEl: HTMLElement,
+    align?: "left" | "right" | "center",
+  ) => {
+    // 이 영역이 회색 화면(컨테이너)에 꽉 차도록 하는 배율을 "contain" 방식으로 구한다.
+    // fitWidth(줌=1일 때 쪽 너비)는 컨테이너의 가로/세로 중 더 좁게 맞춰지는 쪽 기준이라
+    // 남는 여백이 있을 수 있으므로, 단순히 "1/영역비율"만으로는 부족할 때가 있다 - 실제
+    // 컨테이너 크기(availW/availH) 기준으로 가로/세로 각각 꽉 채우는 배율을 구해 더 작은
+    // 쪽(=잘리지 않는 쪽)을 택한다.
+    const availW = Math.max(50, containerSize.w - CONTAINER_PADDING * 2 - FIT_SAFETY_MARGIN);
+    const availH = Math.max(50, containerSize.h - CONTAINER_PADDING * 2 - FIT_SAFETY_MARGIN);
+    const zoomForWidth = availW / (rect.w * fitWidth);
+    const zoomForHeight = availH / (rect.h * fitWidth * aspect);
+    const targetZoom = Math.min(MAX_ZOOM, zoomForWidth, zoomForHeight);
     setZoom(targetZoom);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const scrollEl = scrollRef.current;
-        if (!align || !scrollEl) {
-          el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
-          return;
-        }
-        const pageEl = (el.closest(".shadow-inner") as HTMLElement | null) ?? el;
+        if (!scrollEl) return;
         const containerRect = scrollEl.getBoundingClientRect();
         const pageRect = pageEl.getBoundingClientRect();
-        const zoneRect = el.getBoundingClientRect();
+        const zoneLeft = pageRect.left + rect.x * pageRect.width;
+        const zoneTop = pageRect.top + rect.y * pageRect.height;
+        const zoneWidth = rect.w * pageRect.width;
+        const zoneHeight = rect.h * pageRect.height;
+        const deltaY = zoneTop + zoneHeight / 2 - (containerRect.top + containerRect.height / 2);
         const deltaX =
-          align === "left" ? pageRect.left - containerRect.left : pageRect.right - containerRect.right;
-        const deltaY = zoneRect.top + zoneRect.height / 2 - (containerRect.top + containerRect.height / 2);
+          align === "left"
+            ? pageRect.left - containerRect.left
+            : align === "right"
+              ? pageRect.right - containerRect.right
+              : zoneLeft + zoneWidth / 2 - (containerRect.left + containerRect.width / 2);
         scrollEl.scrollLeft += deltaX;
         scrollEl.scrollTop += deltaY;
       });
@@ -412,18 +434,35 @@ export default function PreviewViewerPage() {
   };
 
   const handleMagnifierConfirm = (el: HTMLDivElement) => {
-    zoomToRect(magnifierRect.fw, magnifierRect.fh, el);
+    const pageEl = (el.closest(".shadow-inner") as HTMLElement | null) ?? el;
+    zoomToRect(
+      { x: magnifierRect.fx, y: magnifierRect.fy, w: magnifierRect.fw, h: magnifierRect.fh },
+      pageEl,
+    );
     setMagnifierMode(false);
   };
 
-  const handleActivateZone = (zone: ActivityZone, el: HTMLDivElement, pageNumber: number) => {
+  const handleActivateZone = (
+    zone: ActivityZone,
+    el: HTMLDivElement,
+    pageNumber: number,
+    kind: "step" | "sub" | "img",
+  ) => {
+    // el(트리거를 눌렀을 때 보이는 미리보기 테두리)은 확대 도중 사라질 수 있으니, 절대
+    // 사라지지 않는 쪽 컨테이너(.shadow-inner)를 지금 미리 찾아 안전하게 넘긴다.
+    const pageEl = (el.closest(".shadow-inner") as HTMLElement | null) ?? el;
+    // 사진은 책등 기준 정렬 없이, 확대한 사진의 정중앙이 회색 화면 정중앙에 오도록 한다.
+    if (kind === "img") {
+      zoomToRect(zone.target, pageEl, "center");
+      return;
+    }
     const align =
       viewMode === "spread" && pagesToShow.length === 2
         ? pageNumber === spreadStart(pageNumber)
           ? "left"
           : "right"
         : undefined;
-    zoomToRect(zone.target.w, zone.target.h, el, align);
+    zoomToRect(zone.target, pageEl, align);
   };
 
   const handleCapture = () => {

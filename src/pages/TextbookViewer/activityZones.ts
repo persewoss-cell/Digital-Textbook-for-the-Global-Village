@@ -130,11 +130,22 @@ export async function detectActivityZones(
   const zones: ActivityZone[] = [];
   const subZones: ActivityZone[] = [];
 
-  for (const [left, right] of [
-    [0, midX],
-    [midX, viewport.width],
-  ]) {
-    const inColumn = (p: Point) => (left === 0 ? p.x < midX : p.x >= midX);
+  // 한 쪽 안에 좌/우 두 흐름이 나란히 있을 때만(양쪽 절반에 모두 라벨/번호가 있을 때만)
+  // 가운데로 나눠서 각자의 확대 범위가 서로 넘어가지 않게 한다. 흐름이 하나뿐인
+  // (한쪽 절반에만 내용이 있는) 보통의 쪽에서까지 나누면, 확대 범위가 페이지의 절반
+  // 너비로 잘려서 실제 내용의 오른쪽 끝까지 닿지 못하는 문제가 생긴다.
+  const hasLeftFlow = [...stepHeaders, ...numberMarkers].some((p) => p.x < midX);
+  const hasRightFlow = [...stepHeaders, ...numberMarkers].some((p) => p.x >= midX);
+  const twoColumns = hasLeftFlow && hasRightFlow;
+  const columns: [number, number][] = twoColumns
+    ? [
+        [0, midX],
+        [midX, viewport.width],
+      ]
+    : [[0, viewport.width]];
+
+  for (const [left, right] of columns) {
+    const inColumn = (p: Point) => (!twoColumns ? true : left === 0 ? p.x < midX : p.x >= midX);
 
     const steps = stepHeaders.filter(inColumn).sort((a, b) => b.y - a.y);
     steps.forEach((header, i) => {

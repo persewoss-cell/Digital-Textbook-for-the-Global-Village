@@ -31,6 +31,12 @@ const FIT_SAFETY_MARGIN = 6;
 // 쪽을 처음 펼칠 때 PDF를 미리 그려 둘 기본 배율(줌=1 기준의 몇 배 해상도로).
 // 평소 읽기+약간의 확대까지는 이 정도면 충분히 선명하고, 태블릿에서도 부담 없다.
 const INITIAL_RENDER_ZOOM_CAP = 2;
+// 손가락 제스처(핀치)로 계속 확대하는 동안, 배율이 늘어날 때마다 PDF를 그 배율
+// 기준으로 다시 그리면(캔버스 재렌더링) 매 프레임 무거운 작업이 끼어들어 뚝뚝
+// 끊기는 현상이 있었다(특히 이 값을 넘어서부터 두드러짐). 그래서 다시 그리는
+// 것은 이 배율까지만 하고, 그 이상은 이미 그려 둔 것을 CSS로 더 키우기만 한다 -
+// 화질은 조금 흐려지지만 계속 다시 그리느라 끊기지는 않는다.
+const RENDER_ZOOM_CEILING = 3.5;
 
 // 체험 모드는 방/학생 계정이 없으므로 uid는 저장에 쓰이지 않는 자리표시자일 뿐이다.
 const PREVIEW_UID = "preview";
@@ -279,10 +285,10 @@ export default function PreviewViewerPage() {
   const [renderCapPage, setRenderCapPage] = useState(currentPage);
   if (renderCapPage !== currentPage) {
     setRenderCapPage(currentPage);
-    setRenderZoomCap(Math.min(MAX_ZOOM, Math.max(INITIAL_RENDER_ZOOM_CAP, zoom)));
+    setRenderZoomCap(Math.min(RENDER_ZOOM_CEILING, Math.max(INITIAL_RENDER_ZOOM_CAP, zoom)));
   }
   useEffect(() => {
-    setRenderZoomCap((cap) => Math.max(cap, Math.min(MAX_ZOOM, zoom)));
+    setRenderZoomCap((cap) => Math.max(cap, Math.min(RENDER_ZOOM_CEILING, zoom)));
   }, [zoom]);
   const maxBoxWidth = fitWidth * renderZoomCap;
   const boxHeight = boxWidth * aspect;

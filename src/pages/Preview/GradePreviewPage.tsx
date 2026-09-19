@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { AppShell } from "@/components/AppShell";
@@ -7,7 +7,12 @@ import { loadPdf } from "@/lib/pdf";
 import { PdfPageCanvas } from "@/pages/TextbookViewer/PdfPageCanvas";
 import { GRADES, type Grade, type TextbookDoc } from "@/types";
 
+// 이 표지 상자를 처음(실제 너비를 재기 전) 그릴 때만 쓰는 값. 실제 표지 크기는
+// 아래 ResizeObserver로 상자의 진짜 너비를 재서 정한다 - 고정 픽셀 값을 그대로
+// 쓰면 핸드폰처럼 그리드 칸이 이 값보다 좁을 때 표지가 칸 밖으로 넘쳐서 옆 칸과
+// 겹쳐 보이는 문제가 있었다.
 const COVER_WIDTH = 220;
+const COVER_ASPECT = 1.3;
 
 function GradeCoverCard({
   grade,
@@ -19,6 +24,8 @@ function GradeCoverCard({
   onOpen: () => void;
 }) {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
+  const coverRef = useRef<HTMLDivElement>(null);
+  const [coverWidth, setCoverWidth] = useState(COVER_WIDTH);
 
   useEffect(() => {
     if (!textbook) {
@@ -34,6 +41,20 @@ function GradeCoverCard({
     };
   }, [textbook]);
 
+  // 표지 상자는 항상 그리드 칸(카드) 너비에 꽉 차게(w-full) 두고, 그 실제 픽셀
+  // 너비를 재서 캔버스 렌더링 크기로 쓴다 - 화면이 좁아도(핸드폰) 칸 안에 정확히
+  // 맞게 줄어든다.
+  useEffect(() => {
+    const el = coverRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w) setCoverWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const disabled = !textbook;
 
   return (
@@ -45,11 +66,12 @@ function GradeCoverCard({
       }`}
     >
       <div
-        className="flex items-center justify-center overflow-hidden rounded-lg bg-slate-100 shadow-inner"
-        style={{ width: COVER_WIDTH, height: COVER_WIDTH * 1.3 }}
+        ref={coverRef}
+        className="flex w-full items-center justify-center overflow-hidden rounded-lg bg-slate-100 shadow-inner"
+        style={{ aspectRatio: `1 / ${COVER_ASPECT}` }}
       >
         {pdf ? (
-          <PdfPageCanvas pdf={pdf} pageNumber={1} renderWidth={COVER_WIDTH} displayWidth={COVER_WIDTH} />
+          <PdfPageCanvas pdf={pdf} pageNumber={1} renderWidth={coverWidth} displayWidth={coverWidth} />
         ) : (
           <span className="px-4 text-xs text-slate-400">
             {textbook === undefined ? "불러오는 중..." : "등록된 교재가 없어요"}

@@ -132,13 +132,13 @@ export function Toolbar({
     (SHAPE_TOOL_ORDER as string[]).includes(t);
 
   return (
-    <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-white px-2 py-2">
+    <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-200 bg-white px-1 py-2 lg:gap-1 lg:px-2">
       <button
-        className={`btn-ghost !px-1.5 text-xs ${showToc ? "bg-brand-100 text-brand-700" : ""}`}
+        className={`btn-ghost !px-1 text-xs ${showToc ? "bg-brand-100 text-brand-700" : ""}`}
         title="목차 보이기/숨기기"
         onClick={onToggleToc}
       >
-        📚 목차
+        📚 <span className="hidden lg:inline">목차</span>
       </button>
 
       <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
@@ -170,23 +170,23 @@ export function Toolbar({
       <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
 
       {/* zoom */}
-      <div className="flex items-center gap-1">
-        <button className="btn-ghost !px-1.5" title="축소" onClick={() => onZoomChange(-0.2)}>
+      <div className="flex items-center gap-0.5">
+        <button className="btn-ghost !px-1" title="축소" onClick={() => onZoomChange(-0.2)}>
           －
         </button>
         <span className="w-10 text-center text-xs text-slate-500">{Math.round(zoom * 100)}%</span>
-        <button className="btn-ghost !px-1.5" title="확대" onClick={() => onZoomChange(0.2)}>
+        <button className="btn-ghost !px-1" title="확대" onClick={() => onZoomChange(0.2)}>
           ＋
         </button>
         <button
-          className={`btn-ghost !px-1.5 text-xs ${magnifierMode ? "bg-brand-100 text-brand-700" : ""}`}
+          className={`btn-ghost !px-1 text-xs ${magnifierMode ? "bg-brand-100 text-brand-700" : ""}`}
           title="부분만 크게 보기(돋보기)"
           onClick={onToggleMagnifier}
         >
-          🔍 확대
+          🔍 <span className="hidden lg:inline">확대</span>
         </button>
         {zoom !== 1 && (
-          <button className="btn-ghost !px-1.5 text-xs" title="원래 크기로" onClick={onZoomReset}>
+          <button className="btn-ghost !px-1 text-xs" title="원래 크기로" onClick={onZoomReset}>
             ↺100%
           </button>
         )}
@@ -196,9 +196,9 @@ export function Toolbar({
         <>
           <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
           {/* annotation tools */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
-              className={`btn-ghost !px-1.5 ${tool === "pen" ? "bg-brand-100 text-brand-700" : ""}`}
+              className={`btn-ghost !px-1 ${tool === "pen" ? "bg-brand-100 text-brand-700" : ""}`}
               title="연필"
               onClick={() => onToolChange(tool === "pen" ? "none" : "pen")}
             >
@@ -208,7 +208,7 @@ export function Toolbar({
             {/* 색펜: 누르면 펜 종류 + 색상을 고르는 창이 뜬다 */}
             <div className="relative">
               <button
-                className={`btn-ghost !px-1.5 ${tool === "colorPen" ? "bg-brand-100 text-brand-700" : ""}`}
+                className={`btn-ghost !px-1 ${tool === "colorPen" ? "bg-brand-100 text-brand-700" : ""}`}
                 title="색펜"
                 onClick={() => {
                   setPenMenuOpen((v) => !v);
@@ -253,14 +253,14 @@ export function Toolbar({
             {/* 도형: 누르면 어떤 도형을 그릴지 고르는 창이 뜬다 */}
             <div className="relative">
               <button
-                className={`btn-ghost !px-1.5 ${isShapeTool(tool) ? "bg-brand-100 text-brand-700" : ""}`}
+                className={`btn-ghost !px-1 ${isShapeTool(tool) ? "bg-brand-100 text-brand-700" : ""}`}
                 title="도형"
                 onClick={() => {
                   setShapeMenuOpen((v) => !v);
                   setPenMenuOpen(false);
                 }}
               >
-                🔷 도형
+                🔷 <span className="hidden lg:inline">도형</span>
               </button>
               {shapeMenuOpen && (
                 <div className="absolute left-0 top-9 z-20 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
@@ -297,7 +297,7 @@ export function Toolbar({
             </div>
 
             <button
-              className={`btn-ghost !px-1.5 ${tool === "eraser" ? "bg-brand-100 text-brand-700" : ""}`}
+              className={`btn-ghost !px-1 ${tool === "eraser" ? "bg-brand-100 text-brand-700" : ""}`}
               title="지우개"
               onClick={() => onToolChange(tool === "eraser" ? "none" : "eraser")}
             >
@@ -314,30 +314,30 @@ export function Toolbar({
                 </button>
               ))}
             <button
-              className="btn-ghost !px-1.5 disabled:opacity-30"
+              className="btn-ghost !px-1 disabled:opacity-30"
               title="실행 취소"
               onClick={onUndo}
             >
               ↶
             </button>
-            <button className="btn-ghost !px-1.5 disabled:opacity-30" title="다시 실행" onClick={onRedo}>
+            <button className="btn-ghost !px-1 disabled:opacity-30" title="다시 실행" onClick={onRedo}>
               ↷
             </button>
           </div>
           <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
 
           {/* 화이트보드 */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
-              className={`btn-ghost !px-1.5 text-xs ${whiteboardMode ? "bg-brand-100 text-brand-700" : ""}`}
+              className={`btn-ghost !px-1 text-xs ${whiteboardMode ? "bg-brand-100 text-brand-700" : ""}`}
               title="화이트보드"
               onClick={onToggleWhiteboard}
             >
-              🖍️ 화이트보드
+              🖍️ <span className="hidden lg:inline">화이트보드</span>
             </button>
             {whiteboardMode && (
-              <button className="btn-ghost !px-1.5 text-xs" title="화이트보드 모두 지우기" onClick={onClearWhiteboard}>
-                🗑️ 모두 지우기
+              <button className="btn-ghost !px-1 text-xs" title="화이트보드 모두 지우기" onClick={onClearWhiteboard}>
+                🗑️ <span className="hidden lg:inline">모두 지우기</span>
               </button>
             )}
           </div>
@@ -358,12 +358,12 @@ export function Toolbar({
             className="flex flex-nowrap items-center gap-1"
           >
             <input
-              className="input h-8 w-16 !px-2 !py-1 text-xs sm:w-24"
+              className="input h-8 !w-10 !px-1 !py-1 text-xs lg:!w-24"
               placeholder="교재 내 검색"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-            <button className="btn-ghost shrink-0 !px-1.5" type="submit" title="검색">
+            <button className="btn-ghost shrink-0 !px-1" type="submit" title="검색">
               🔎
             </button>
           </form>
@@ -390,16 +390,16 @@ export function Toolbar({
           )}
         </div>
 
-        <button className="btn-ghost shrink-0 !px-1.5" title="이 쪽 캡처 저장" onClick={onCapture}>
-          📷 캡처저장
+        <button className="btn-ghost shrink-0 !px-1" title="이 쪽 캡처 저장" onClick={onCapture}>
+          📷 <span className="hidden lg:inline">캡처저장</span>
         </button>
 
         <button
-          className={`btn-ghost shrink-0 !px-1.5 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
+          className={`btn-ghost shrink-0 !px-1 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
           title="노트창 보이기/숨기기"
           onClick={onToggleNotes}
         >
-          📝 노트
+          📝 <span className="hidden lg:inline">노트</span>
         </button>
       </div>
     </div>

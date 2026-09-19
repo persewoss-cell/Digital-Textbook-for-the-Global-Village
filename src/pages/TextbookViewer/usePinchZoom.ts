@@ -280,6 +280,45 @@ export function usePinchZoom({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom]);
 
+  // PC(트랙패드)에서 두 손가락으로 오므리고 벌리는 제스처는 브라우저에 wheel
+  // 이벤트로 전달되는데, 이때 ctrlKey가 자동으로 true로 표시된다(트랙패드 핀치의
+  // 표준 감지 방법 - 실제 Ctrl 키를 누르지 않아도 트랙패드가 그렇게 보고한다).
+  // 마우스 사용자를 위해 Ctrl+휠도 같이 지원한다. 커서(또는 두 손가락) 위치를
+  // 그대로 축소·확대 중심으로 삼아, 태블릿 핀치줌과 똑같이 그 지점이 화면에서
+  // 안 움직이게 한다.
+  useEffect(() => {
+    if (!scrollEl || !contentEl) return;
+    const el = scrollEl;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey || !enabledRef.current) return;
+      e.preventDefault();
+      const rect = contentEl.getBoundingClientRect();
+      const fx = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
+      const fy = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0.5;
+      pinchRef.current = { startDistance: 0, startZoom: zoomRef.current, fx, fy };
+      midRef.current = { x: e.clientX, y: e.clientY };
+      // deltaY가 음수면(손가락을 벌리는 핀치아웃/휠을 위로) 확대, 양수면 축소 -
+      // 트랙패드/브라우저의 공통 관례를 따른다. 마우스 휠은 한 번의 "딸깍"이
+      // 트랙패드보다 훨씬 큰 deltaY(보통 100 안팎)를 한 번에 보내므로, 계수를 작게
+      // 잡아야 한 번 굴렸을 때 단번에 최대 배율로 튀지 않고 계단식으로 자연스럽게
+      // 커진다.
+      const factor = Math.exp(-e.deltaY * 0.0025);
+      const next = Math.min(maxZoom, Math.max(minZoom, zoomRef.current * factor));
+      pendingZoomRef.current = next;
+      if (zoomRafRef.current === 0) {
+        zoomRafRef.current = requestAnimationFrame(() => {
+          zoomRafRef.current = 0;
+          if (pendingZoomRef.current !== null) {
+            setZoom(pendingZoomRef.current);
+            pendingZoomRef.current = null;
+          }
+        });
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [scrollEl, contentEl, minZoom, maxZoom, setZoom]);
+
   // PC(마우스)에서도 태블릿의 한 손가락 팬처럼, 교재 위 빈 곳을 눌러서 그대로
   // 드래그하면 그 방향대로 스크롤되게 한다. 활동 확대 아이콘/번호나 메모처럼 그
   // 자리에서 뭔가를 해야 하는 요소들은 이미 자기 pointerdown에서 stopPropagation을

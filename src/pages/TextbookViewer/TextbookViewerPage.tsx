@@ -271,6 +271,25 @@ export default function TextbookViewerPage() {
   }, [viewMode, currentPage, numPages]);
   const pagesKey = pagesToShow.join(",");
 
+  // 쪽을 넘길 때마다 그 쪽이(PdfPageCanvas가 최소 한 번 그려서 onSize를 부를
+  // 때까지) 다 준비되기 전에는 화면 가운데 로딩 표시를 띄운다 - 그 전에 만지면
+  // 확대/스크롤이 버벅이므로, 로딩 중에는 조작을 막아 둔다. pagesKey가 바뀐 걸
+  // useEffect로 뒤늦게 알아채면 새 쪽이 잠깐 준비 안 된 채로 조작 가능해 보이는
+  // 틈이 생기므로, 렌더링 중에 바로 알아채서(리액트의 "렌더 중 상태 조정" 패턴)
+  // 그 쪽을 처음 그릴 때부터 바로 로딩 표시가 켜져 있게 한다.
+  const [pageLoading, setPageLoading] = useState(true);
+  const [loadingForKey, setLoadingForKey] = useState(pagesKey);
+  const readyPagesRef = useRef<Set<number>>(new Set());
+  if (loadingForKey !== pagesKey) {
+    setLoadingForKey(pagesKey);
+    readyPagesRef.current = new Set();
+    setPageLoading(true);
+  }
+  const handlePageReady = (n: number) => {
+    readyPagesRef.current.add(n);
+    if (pagesToShow.every((p) => readyPagesRef.current.has(p))) setPageLoading(false);
+  };
+
   // 표지 혼자일 때도 다음 스프레드와 같은 크기를 유지하기 위해 항상 2쪽 기준으로 계산한다.
   const layoutPageCount = viewMode === "spread" ? 2 : 1;
 
@@ -935,6 +954,7 @@ export default function TextbookViewerPage() {
                             onSelectNote={(id) => handleSelectNote(n, id)}
                             onMoveNote={(id, x, y) => handleMoveNote(n, id, x, y)}
                             onActivateZone={handleActivateZone}
+                            onPageReady={() => handlePageReady(n)}
                           />
                         </div>
                       ))}
@@ -967,6 +987,17 @@ export default function TextbookViewerPage() {
                   ▶
                 </button>
               </>
+            )}
+
+            {/* 쪽을 넘기면 그 쪽이 실제로 다 그려질 때까지(확대·스크롤이 버벅이지
+                않을 정도로 안정될 때까지) 가운데에 로딩 표시를 띄우고 조작을 막는다. */}
+            {!whiteboardMode && pageLoading && (
+              <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/60">
+                <div className="flex flex-col items-center gap-3 rounded-2xl bg-white px-6 py-5 shadow-lg">
+                  <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand-600" />
+                  <p className="text-sm font-semibold text-slate-600">불러오는 중...</p>
+                </div>
+              </div>
             )}
           </div>
 

@@ -53,6 +53,10 @@ interface BookPageProps {
     pageNumber: number,
     kind: "step" | "sub" | "img",
   ) => void;
+  /** 이 쪽의 PDF가 처음으로 다 그려졌을 때(캔버스에 실제로 그림) 한 번 불린다.
+   * 부모가 이걸로 "지금 보여줄 쪽들이 전부 준비됐는지"를 판단해 가운데 로딩
+   * 표시를 없앤다. */
+  onPageReady?: () => void;
 }
 
 export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookPage(
@@ -82,6 +86,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     onSelectNote,
     onMoveNote,
     onActivateZone,
+    onPageReady,
   },
   ref,
 ) {
@@ -144,6 +149,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
         renderWidth={maxBoxWidth}
         displayWidth={boxWidth}
         onSize={() => {
+          onPageReady?.();
           const seq = ++linkDetectSeq.current;
           detectPageLinks(pdf, pageNumber, pdfCanvasRef.current).then((found) => {
             if (linkDetectSeq.current === seq) setLinks(found);

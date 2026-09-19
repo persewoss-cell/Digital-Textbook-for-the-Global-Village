@@ -260,9 +260,13 @@ export default function TextbookViewerPage() {
     if (!readOnly || !effectiveUid || !textbookId) return;
     return watchProgress(effectiveUid, textbookId, (p) => {
       if (!p) return;
+      const target = viewMode === "spread" ? spreadStart(p.lastPage) : p.lastPage;
+      // currentPage를 의존 배열에 넣으면 그때마다 구독을 다시 걸어야 해서, 최신 값을
+      // 안전하게 읽으려면(클로저가 오래된 값을 붙잡지 않도록) 함수형 업데이트를 쓴다.
       setCurrentPage((cur) => {
-        const target = viewMode === "spread" ? spreadStart(p.lastPage) : p.lastPage;
-        return target === cur ? cur : target;
+        if (target === cur) return cur;
+        setZoom(1);
+        return target;
       });
     });
   }, [readOnly, effectiveUid, textbookId, viewMode]);
@@ -437,6 +441,9 @@ export default function TextbookViewerPage() {
     setTimeout(() => {
       setCurrentPage(page);
       setPageOpacity(1);
+      // 확대해서 보던 중에 다른 쪽으로 넘어가면, 새 쪽에서도 그 배율이 그대로
+      // 남아 있어 헷갈리므로 쪽이 바뀔 때마다 100%로 되돌린다.
+      setZoom(1);
       touchProgressPage(page);
     }, 120);
   };

@@ -323,6 +323,9 @@ export default function PreviewViewerPage() {
     setTimeout(() => {
       setCurrentPage(page);
       setPageOpacity(1);
+      // 확대해서 보던 중에 다른 쪽으로 넘어가면, 새 쪽에서도 그 배율이 그대로
+      // 남아 있어 헷갈리므로 쪽이 바뀔 때마다 100%로 되돌린다.
+      setZoom(1);
     }, 120);
   };
 

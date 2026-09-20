@@ -321,6 +321,15 @@ export function Toolbar({
                 className={`btn-ghost !px-1 ${tool === "colorPen" ? "bg-brand-100 text-brand-700" : ""}`}
                 title="색펜"
                 onClick={() => {
+                  // 이미 색펜이 선택된 상태(빨간 점)에서 다시 누르면, 창을 다시 띄우지
+                  // 않고 바로 꺼지게 한다 - 연필/지우개처럼 아이콘 한 번으로 켜고 끌 수
+                  // 있어야 자연스럽다. 아직 선택 전이면 지금까지처럼 펜 종류/색상을
+                  // 고르는 창을 연다.
+                  if (tool === "colorPen") {
+                    onToolChange("none");
+                    setPenMenuOpen(false);
+                    return;
+                  }
                   setPenMenuOpen((v) => !v);
                   setShapeMenuOpen(false);
                 }}
@@ -368,6 +377,13 @@ export function Toolbar({
                 className={`btn-ghost !px-1 ${isShapeTool(tool) ? "bg-brand-100 text-brand-700" : ""}`}
                 title="도형"
                 onClick={() => {
+                  // 이미 도형 도구가 선택된 상태(빨간 점)에서 다시 누르면, 창을 다시
+                  // 띄우지 않고 바로 꺼지게 한다 - 색펜과 같은 이유.
+                  if (isShapeTool(tool)) {
+                    onToolChange("none");
+                    setShapeMenuOpen(false);
+                    return;
+                  }
                   setShapeMenuOpen((v) => !v);
                   setPenMenuOpen(false);
                 }}

@@ -3,8 +3,10 @@ import {
   PENCIL_BASE_WIDTH,
   PEN_STYLES,
   WIDTH_LEVELS,
-  levelForWidth,
-  widthForLevel,
+  levelForPenWidth,
+  linearLevelForWidth,
+  linearWidthForLevel,
+  widthForPenLevel,
   type AnnotationTool,
   type PenStyleId,
   type ShapeTool,
@@ -398,8 +400,8 @@ export function Toolbar({
                 <div className="absolute left-1/2 top-9 z-20 w-48 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
                   <p className="mb-1.5 text-[11px] font-semibold text-slate-400">굵기</p>
                   <WidthSlider
-                    level={levelForWidth(pencilWidth, PENCIL_BASE_WIDTH)}
-                    onLevelChange={(level) => onPencilWidthChange(widthForLevel(PENCIL_BASE_WIDTH, level))}
+                    level={linearLevelForWidth(pencilWidth, PENCIL_BASE_WIDTH)}
+                    onLevelChange={(level) => onPencilWidthChange(linearWidthForLevel(PENCIL_BASE_WIDTH, level))}
                   />
                 </div>
               )}
@@ -454,9 +456,11 @@ export function Toolbar({
                   <p className="mb-1.5 text-[11px] font-semibold text-slate-400">굵기</p>
                   <div className="mb-3">
                     <WidthSlider
-                      level={levelForWidth(penWidth, PEN_STYLES.find((s) => s.id === penStyleId)!.width)}
+                      level={levelForPenWidth(penStyleId, penWidth, PEN_STYLES.find((s) => s.id === penStyleId)!.width)}
                       onLevelChange={(level) =>
-                        onPenWidthChange(widthForLevel(PEN_STYLES.find((s) => s.id === penStyleId)!.width, level))
+                        onPenWidthChange(
+                          widthForPenLevel(penStyleId, PEN_STYLES.find((s) => s.id === penStyleId)!.width, level),
+                        )
                       }
                     />
                   </div>

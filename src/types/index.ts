@@ -80,12 +80,15 @@ export const DEFAULT_PEN_STYLE: PenStyleId = "ballpoint";
 // 연필 필기의 두께가 그대로 유지된다.
 export const PENCIL_BASE_WIDTH = 1.4;
 
-// 굵기 조정 슬라이더는 1~10 정수 단계로 보여준다. 가장 얇은 1단계는 그 펜의
-// "기본 굵기"의 5분의 1, 가장 굵은 10단계는 형광펜의 기본 굵기 - 즉 어떤 펜을
-// 골라도 "이 펜다운 얇음"부터 "형광펜만큼 굵게"까지 조절할 수 있게 한다.
+// 굵기 조정 슬라이더는 1~10 정수 단계로 보여준다.
 export const WIDTH_LEVELS = 10;
+// 형광펜만은 원래 방식(기존 사용자가 이미 익숙한 굵기)을 그대로 둔다: 1단계는
+// "기본 굵기"의 5분의 1, 10단계는 형광펜 기본 굵기 자체가 되도록 그 사이를
+// 등차로 나눈다.
 export const MAX_PEN_WIDTH = PEN_STYLES.find((s) => s.id === "highlighter")!.width;
 
+/** 형광펜 전용 굵기 계산(예전 방식, 그대로 유지) - 1단계=기본 굵기/5, 10단계=형광펜
+ * 자기 자신의 기본 굵기. */
 export function widthForLevel(baseWidth: number, level: number): number {
   const min = baseWidth / 5;
   const clampedLevel = Math.min(WIDTH_LEVELS, Math.max(1, level));
@@ -100,16 +103,42 @@ export function levelForWidth(width: number, baseWidth: number): number {
   return Math.min(WIDTH_LEVELS, Math.max(1, Math.round(level)));
 }
 
+/** 연필/볼펜/색연필/사인펜용 굵기 계산 - 1단계 굵기(기본 굵기의 5분의 1)를 기준
+ * 단위로 삼아, 2단계는 그 2배, 3단계는 3배, ... 10단계는 10배가 되는 단순한
+ * 배수 방식이다(형광펜처럼 굵기가 형광펜 자체에 맞춰지지 않고, 각 펜 자기
+ * 자신의 얇은 굵기를 몇 배로 키울지만 정한다). */
+export function linearWidthForLevel(baseWidth: number, level: number): number {
+  const unit = baseWidth / 5;
+  const clampedLevel = Math.min(WIDTH_LEVELS, Math.max(1, level));
+  return unit * clampedLevel;
+}
+
+export function linearLevelForWidth(width: number, baseWidth: number): number {
+  const unit = baseWidth / 5;
+  if (unit <= 0) return 1;
+  return Math.min(WIDTH_LEVELS, Math.max(1, Math.round(width / unit)));
+}
+
+/** 색펜 종류별로 알맞은 굵기 계산 방식을 골라준다 - 형광펜만 예전 방식(widthForLevel),
+ * 나머지(볼펜/색연필/사인펜)는 배수 방식(linearWidthForLevel)을 쓴다. */
+export function widthForPenLevel(styleId: PenStyleId, baseWidth: number, level: number): number {
+  return styleId === "highlighter" ? widthForLevel(baseWidth, level) : linearWidthForLevel(baseWidth, level);
+}
+
+export function levelForPenWidth(styleId: PenStyleId, width: number, baseWidth: number): number {
+  return styleId === "highlighter" ? levelForWidth(width, baseWidth) : linearLevelForWidth(width, baseWidth);
+}
+
 // 각 펜 종류를 처음 골랐을 때(아직 슬라이더를 만진 적 없을 때) 기본으로 보여줄
-// 굵기 단계. 볼펜/색연필/사인펜/연필은 중간(5), 형광펜은 원래도 굵은 펜이라
-// 조금 더 굵은 7단계를 기본으로 둔다.
+// 굵기 단계. 연필/볼펜은 비교적 얇게 쓰는 펜이라 3단계, 색연필/사인펜은 좀 더
+// 두껍게 쓰는 펜이라 6단계, 형광펜은 원래도 굵은 펜이라 7단계를 기본으로 둔다.
 export const DEFAULT_WIDTH_LEVEL: Record<PenStyleId, number> = {
-  ballpoint: 5,
-  marker: 5,
-  colorPencil: 5,
+  ballpoint: 3,
+  marker: 6,
+  colorPencil: 6,
   highlighter: 7,
 };
-export const DEFAULT_PENCIL_WIDTH_LEVEL = 5;
+export const DEFAULT_PENCIL_WIDTH_LEVEL = 3;
 
 export interface PlacedNote {
   id: string;

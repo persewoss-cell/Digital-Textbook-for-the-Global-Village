@@ -11,7 +11,8 @@ import {
   DEFAULT_WIDTH_LEVEL,
   PENCIL_BASE_WIDTH,
   PEN_STYLES,
-  widthForLevel,
+  linearWidthForLevel,
+  widthForPenLevel,
   type AnnotationTool,
   type PenStyleId,
   type PlacedNote,
@@ -78,11 +79,13 @@ export default function PreviewViewerPage() {
   const [penWidthByStyle, setPenWidthByStyle] = useState<Record<PenStyleId, number>>(() => {
     const initial = {} as Record<PenStyleId, number>;
     PEN_STYLES.forEach((s) => {
-      initial[s.id] = widthForLevel(s.width, DEFAULT_WIDTH_LEVEL[s.id]);
+      initial[s.id] = widthForPenLevel(s.id, s.width, DEFAULT_WIDTH_LEVEL[s.id]);
     });
     return initial;
   });
-  const [pencilWidth, setPencilWidth] = useState(() => widthForLevel(PENCIL_BASE_WIDTH, DEFAULT_PENCIL_WIDTH_LEVEL));
+  const [pencilWidth, setPencilWidth] = useState(() =>
+    linearWidthForLevel(PENCIL_BASE_WIDTH, DEFAULT_PENCIL_WIDTH_LEVEL),
+  );
   const activePenStyle = PEN_STYLES.find((p) => p.id === penStyleId) ?? PEN_STYLES[0];
   const effectivePenWidth = tool === "pen" ? pencilWidth : penWidthByStyle[penStyleId];
   const [eraserSize, setEraserSize] = useState(DEFAULT_ERASER_SIZE);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { AppShell } from "@/components/AppShell";
@@ -157,7 +157,7 @@ export default function TextbookViewerPage() {
     }
   };
 
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ w: 900, h: 600 });
@@ -249,22 +249,40 @@ export default function TextbookViewerPage() {
     };
   }, [textbookId]);
 
-  // pdf/textbook/room 등을 불러오는 동안은 로딩 화면만 그려져서 containerRef가 아직
-  // DOM에 붙지 않은 상태다. 의존성 배열이 비어 있으면 그 순간(el이 null)에 딱 한 번만
-  // 실행되고 다시는 재실행되지 않아, 느린 네트워크(태블릿 등)에서는 실제 교재 화면이
-  // 뜬 뒤에도 회색 영역 크기를 영영 측정하지 못해 항상 기본값(900x600)으로 계산되는
-  // 문제가 있었다. 로딩이 끝나는 시점에 맞춰 재실행되도록 의존성에 넣어 이 경쟁 상태를
-  // 없앤다.
-  useEffect(() => {
-    const el = containerRef.current;
+  // 이 회색 영역(containerRef)을 관찰하는 ResizeObserver는, 그 DOM 요소 자체가
+  // 통째로 새로 만들어질 때마다(예: 핸드폰을 세로에서 가로로 돌려 PhoneScaleFit의
+  // 축소 래퍼가 있다/없다로 바뀌면 그 안의 화면 전체가 한 번 마운트 해제되었다가
+  // 다시 마운트된다) 새 요소를 다시 관찰하도록 이어 붙여야 한다. useEffect의 의존성
+  // 배열에 의존하면(예전엔 [pdf, textbook, room, effectiveUid]) 정작 이런 리마운트는
+  // 그 값들과 무관해서 놓치기 쉽다 - 옛 요소는 이미 화면에서 사라져 크기가 0이 되고,
+  // 그 순간의 콜백(가로 모드로 갓 바뀐 시점)을 마지막으로 다시는 안 불려서
+  // containerSize가 0으로 굳어 버리고, 그 결과 최소 안전값(120px)만큼만 작게
+  // 그려지는 문제가 있었다("가로 모드로 바꾸면 100%인데도 훨씬 작아 보인다"는
+  // 증상). 콜백 ref로 바꾸면 이 div가 새로 만들어질 때마다(리마운트 포함) 항상 다시
+  // 불려서, 그때마다 새 요소를 새로 관찰하므로 이 문제가 근본적으로 사라진다.
+  const containerResizeObserver = useRef<ResizeObserver | null>(null);
+  // 콜백 자체를 렌더마다 새로 만들면(useCallback 없이) React가 매 렌더 "다른 ref
+  // 함수"로 보고 옛 것엔 null을, 새 것엔 요소를 계속 다시 불러 대서 - 이 안에서
+  // setContainerSize를 부르는 것과 맞물려 렌더가 끝없이 반복되는 무한 루프가 된다.
+  // 의존성 없는 useCallback으로 늘 같은 함수를 유지해야 진짜 마운트/언마운트 때만 불린다.
+  const setContainerRef = useCallback((el: HTMLDivElement | null) => {
+    containerResizeObserver.current?.disconnect();
+    containerResizeObserver.current = null;
+    containerRef.current = el;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       const r = entries[0].contentRect;
       setContainerSize({ w: r.width, h: r.height });
     });
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [pdf, textbook, room, effectiveUid]);
+    containerResizeObserver.current = ro;
+    // 콜백이 불린 시점에 이미 레이아웃이 잡혀 있으므로, 옵저버의 첫 콜백(보통 다음
+    // 프레임)을 기다리지 않고 지금 크기를 바로 한 번 반영해서 첫 프레임부터 맞는
+    // 크기로 그려지게 한다.
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) setContainerSize({ w: rect.width, h: rect.height });
+  }, []);
+  useEffect(() => () => containerResizeObserver.current?.disconnect(), []);
 
   // 태블릿/휴대폰에서 두 손가락으로 꼬집으면 회색 영역 안에서만 교재가 확대/축소된다.
   // 필기 중이거나 돋보기/화이트보드를 쓰는 중에는 손가락 두 개 입력과 겹치지 않도록 끈다.
@@ -1057,7 +1075,7 @@ export default function TextbookViewerPage() {
             />
           )}
 
-          <div ref={containerRef} className="relative flex-1 overflow-hidden bg-slate-200">
+          <div ref={setContainerRef} className="relative flex-1 overflow-hidden bg-slate-200">
             {/* 화이트보드는 껐다 켜도 그린 게 남아 있어야 하므로, 탭을 옮기듯 항상 두
                 화면을 같이 마운트해 두고 보이는 쪽만 바꾼다 - 조건부 렌더링으로
                 언마운트해 버리면 AnnotationLayer의 획 상태(strokes)가 그대로 날아간다. */}

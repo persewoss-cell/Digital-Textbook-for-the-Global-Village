@@ -467,8 +467,10 @@ export function Toolbar({
               title={isFullscreen ? "전체화면 나가기" : "전체화면"}
               onClick={onToggleFullscreen}
             >
-              {isFullscreen ? "🗗" : "⛶"}{" "}
-              <span className="hidden lg:inline">{isFullscreen ? "축소" : "전체화면"}</span>
+              {/* "축소" 전용 아이콘(🗗 등)은 안드로이드/아이폰 기본 글꼴에서 지원하지
+                  않아 빈 네모(글자 깨짐)로 보이는 경우가 많아서, 이미 잘 보이는 것이
+                  확인된 ⛶를 그대로 쓰고 배경색+글자로만 상태를 구분한다. */}
+              ⛶ <span className="hidden lg:inline">{isFullscreen ? "축소" : "전체화면"}</span>
             </button>
           </div>
           <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />

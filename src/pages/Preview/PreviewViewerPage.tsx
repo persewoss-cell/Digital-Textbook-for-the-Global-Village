@@ -15,10 +15,15 @@ import {
   type TextbookDoc,
 } from "@/types";
 import { BookPage, type BookPageHandle } from "@/pages/TextbookViewer/BookPage";
-import { AnnotationLayer, type AnnotationLayerHandle } from "@/pages/TextbookViewer/AnnotationLayer";
+import {
+  AnnotationLayer,
+  type AnnotationLayerHandle,
+  STROKE_WIDTH_REFERENCE,
+} from "@/pages/TextbookViewer/AnnotationLayer";
 import { Toolbar, type SearchResult } from "@/pages/TextbookViewer/Toolbar";
 import { TocPanel } from "@/pages/TextbookViewer/TocPanel";
 import { NotesPanel } from "@/pages/TextbookViewer/NotesPanel";
+import { DEFAULT_NOTE_FONT_SIZE } from "@/pages/TextbookViewer/NotesOverlay";
 import { MagnifierOverlay, type MagnifierRect } from "@/pages/TextbookViewer/MagnifierOverlay";
 import { usePinchZoom } from "@/pages/TextbookViewer/usePinchZoom";
 import type { ActivityZone } from "@/pages/TextbookViewer/activityZones";
@@ -108,16 +113,27 @@ export default function PreviewViewerPage() {
   // pages는 보통 한 쪽([n])이지만, 두 쪽 보기에서 필기/지우개가 경계를 넘나든
   // 동작은 두 쪽 다([n, 옆쪽])를 담아서, 되돌리기 한 번으로 두 쪽 모두 되돌아가게 한다.
   const lastDrawAction = useRef<{ seq: number; pages: number[] } | null>(null);
-  const lastNoteAction = useRef<{ seq: number; page: number } | null>(null);
+  const lastNoteAction = useRef<{ seq: number } | null>(null);
   const lastUndoneType = useRef<"note" | "draw" | null>(null);
-  const lastUndonePage = useRef<number | null>(null);
   const lastUndoneDrawPages = useRef<number[] | null>(null);
-  const notesHistoryMapRef = useRef<Map<number, { seq: number; prev: PlacedNote[] }[]>>(new Map());
-  const notesFutureMapRef = useRef<Map<number, { seq: number; next: PlacedNote[] }[]>>(new Map());
+  // 노트(메모) 실행취소는 쪽별로 따로 쌓지 않고 전역으로 하나만 쌓는다 - 메모를
+  // 두 쪽에 걸쳐 옮기는 동작처럼 한 동작이 여러 쪽을 동시에 건드릴 수 있어서,
+  // 각 항목이 자기가 건드린 쪽 번호 목록(entries)을 통째로 들고 있게 하면
+  // 되돌리기/다시하기가 그 쪽들을 전부 한 번에 정확히 되돌릴 수 있다.
+  const noteHistoryStack = useRef<{ seq: number; entries: { page: number; prev: PlacedNote[] }[] }[]>([]);
+  const noteFutureStack = useRef<{ seq: number; entries: { page: number; next: PlacedNote[] }[] }[]>([]);
   const noteEditSession = useRef<{
     page: number;
     preState: PlacedNote[];
     timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  // 두 쪽에 걸쳐 메모를 끄는 동안(중앙을 넘나들어도 잘리지 않고 보이도록) 화면
+  // 전체 좌표계로 위치를 들고 있는 상태. null이면 지금 끄는 중인 메모가 없다.
+  const [draggingNote, setDraggingNote] = useState<{
+    note: PlacedNote;
+    sourcePage: number;
+    fx: number;
+    fy: number;
   } | null>(null);
 
   useEffect(() => {
@@ -245,15 +261,16 @@ export default function PreviewViewerPage() {
   const printedCurrentPage = Math.max(1, primaryPage - printedOffset);
   const printedNumPages = Math.max(printedCurrentPage, numPages - printedOffset);
 
-  const pushNoteHistory = (page: number, prevItems: PlacedNote[]) => {
-    const stack = notesHistoryMapRef.current.get(page) ?? [];
+  const pushNoteAction = (entries: { page: number; prev: PlacedNote[] }[]) => {
     const seq = nextActionSeq();
-    stack.push({ seq, prev: prevItems });
+    const stack = noteHistoryStack.current;
+    stack.push({ seq, entries });
     if (stack.length > 50) stack.shift();
-    notesHistoryMapRef.current.set(page, stack);
-    notesFutureMapRef.current.set(page, []);
-    lastNoteAction.current = { seq, page };
+    noteFutureStack.current = [];
+    lastNoteAction.current = { seq };
   };
+  const pushNoteHistory = (page: number, prevItems: PlacedNote[]) =>
+    pushNoteAction([{ page, prev: prevItems }]);
 
   const commitNoteEditSession = () => {
     const session = noteEditSession.current;
@@ -432,18 +449,18 @@ export default function PreviewViewerPage() {
     const noteIsNewer = noteAction !== null && (drawAction === null || noteAction.seq > drawAction.seq);
 
     if (noteIsNewer) {
-      const stack = notesHistoryMapRef.current.get(noteAction.page);
-      if (!stack || stack.length === 0) return;
-      const entry = stack.pop()!;
-      const currentItems = notesByPage.get(noteAction.page) ?? [];
-      const futureStack = notesFutureMapRef.current.get(noteAction.page) ?? [];
-      futureStack.push({ seq: entry.seq, next: currentItems });
-      notesFutureMapRef.current.set(noteAction.page, futureStack);
-      setNotesByPage((prev) => new Map(prev).set(noteAction.page, entry.prev));
-      const newTop = stack[stack.length - 1];
-      lastNoteAction.current = newTop ? { seq: newTop.seq, page: noteAction.page } : null;
+      const entry = noteHistoryStack.current.pop();
+      if (!entry) return;
+      const nextEntries = entry.entries.map(({ page }) => ({ page, next: notesByPage.get(page) ?? [] }));
+      noteFutureStack.current.push({ seq: entry.seq, entries: nextEntries });
+      setNotesByPage((prev) => {
+        const next = new Map(prev);
+        entry.entries.forEach(({ page, prev: prevItems }) => next.set(page, prevItems));
+        return next;
+      });
+      const newTop = noteHistoryStack.current[noteHistoryStack.current.length - 1];
+      lastNoteAction.current = newTop ? { seq: newTop.seq } : null;
       lastUndoneType.current = "note";
-      lastUndonePage.current = noteAction.page;
       return;
     }
 
@@ -462,17 +479,17 @@ export default function PreviewViewerPage() {
       whiteboardRef.current?.redo();
       return;
     }
-    if (lastUndoneType.current === "note" && lastUndonePage.current !== null) {
-      const page = lastUndonePage.current;
-      const futureStack = notesFutureMapRef.current.get(page);
-      if (!futureStack || futureStack.length === 0) return;
-      const entry = futureStack.pop()!;
-      const currentItems = notesByPage.get(page) ?? [];
-      const histStack = notesHistoryMapRef.current.get(page) ?? [];
-      histStack.push({ seq: entry.seq, prev: currentItems });
-      notesHistoryMapRef.current.set(page, histStack);
-      lastNoteAction.current = { seq: entry.seq, page };
-      setNotesByPage((prev) => new Map(prev).set(page, entry.next));
+    if (lastUndoneType.current === "note") {
+      const entry = noteFutureStack.current.pop();
+      if (!entry) return;
+      const prevEntries = entry.entries.map(({ page }) => ({ page, prev: notesByPage.get(page) ?? [] }));
+      noteHistoryStack.current.push({ seq: entry.seq, entries: prevEntries });
+      setNotesByPage((prev) => {
+        const next = new Map(prev);
+        entry.entries.forEach(({ page, next: nextItems }) => next.set(page, nextItems));
+        return next;
+      });
+      lastNoteAction.current = { seq: entry.seq };
       lastUndoneType.current = null;
       return;
     }
@@ -652,11 +669,77 @@ export default function PreviewViewerPage() {
     const next = current.map((n) => (n.id === id ? { ...n, fontSize } : n));
     setNotesByPage((prev) => new Map(prev).set(activeNotePage, next));
   };
-  const handleMoveNote = (page: number, id: string, x: number, y: number) => {
-    touchNoteEditSession(page);
-    const current = notesByPage.get(page) ?? [];
-    const next = current.map((n) => (n.id === id ? { ...n, x, y } : n));
-    setNotesByPage((prev) => new Map(prev).set(page, next));
+  // 화면 좌표(clientX/Y)를 지금 펼쳐진 쪽(들) 기준으로 "어느 쪽의 어디"인지로
+  // 바꾼다. 두 쪽 보기에서 경계를 넘나든 메모 드래그를 다루는 데 쓴다.
+  const resolveNoteDrop = (
+    clientX: number,
+    clientY: number,
+    sourcePage: number,
+  ): { page: number; x: number; y: number } => {
+    const clamp = (v: number) => Math.min(0.98, Math.max(0.02, v));
+    const rect = contentRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return { page: sourcePage, x: 0.5, y: 0.5 };
+    const fx = (clientX - rect.left) / rect.width;
+    const fy = (clientY - rect.top) / rect.height;
+    if (viewMode === "spread" && pagesToShow.length === 2) {
+      const within = fx * 2;
+      return within < 1
+        ? { page: pagesToShow[0], x: clamp(within), y: clamp(fy) }
+        : { page: pagesToShow[1], x: clamp(within - 1), y: clamp(fy) };
+    }
+    if (viewMode === "spread" && pagesToShow.length === 1 && pagesToShow[0] === 1) {
+      return { page: sourcePage, x: clamp(fx * 2 - 1), y: clamp(fy) };
+    }
+    return { page: sourcePage, x: clamp(fx), y: clamp(fy) };
+  };
+
+  const handleNoteDragStart = (sourcePage: number, note: PlacedNote, clientX: number, clientY: number) => {
+    const rect = contentRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return;
+    setDraggingNote({
+      note,
+      sourcePage,
+      fx: (clientX - rect.left) / rect.width,
+      fy: (clientY - rect.top) / rect.height,
+    });
+  };
+  const handleNoteDragMove = (clientX: number, clientY: number) => {
+    const rect = contentRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return;
+    setDraggingNote((d) => (d ? { ...d, fx: (clientX - rect.left) / rect.width, fy: (clientY - rect.top) / rect.height } : d));
+  };
+  const handleNoteDragEnd = (clientX: number, clientY: number) => {
+    if (!draggingNote) return;
+    const { sourcePage, note } = draggingNote;
+    setDraggingNote(null);
+    const drop = resolveNoteDrop(clientX, clientY, sourcePage);
+    commitNoteMove(sourcePage, note, drop.page, drop.x, drop.y);
+  };
+
+  const commitNoteMove = (sourcePage: number, note: PlacedNote, destPage: number, x: number, y: number) => {
+    commitNoteEditSession();
+    if (sourcePage === destPage) {
+      const current = notesByPage.get(sourcePage) ?? [];
+      pushNoteHistory(sourcePage, current);
+      const next = current.map((n) => (n.id === note.id ? { ...n, x, y } : n));
+      setNotesByPage((prev) => new Map(prev).set(sourcePage, next));
+      return;
+    }
+    const srcCurrent = notesByPage.get(sourcePage) ?? [];
+    const dstCurrent = notesByPage.get(destPage) ?? [];
+    pushNoteAction([
+      { page: sourcePage, prev: srcCurrent },
+      { page: destPage, prev: dstCurrent },
+    ]);
+    const srcNext = srcCurrent.filter((n) => n.id !== note.id);
+    const dstNext = [...dstCurrent, { ...note, x, y }];
+    setNotesByPage((prev) => {
+      const next = new Map(prev);
+      next.set(sourcePage, srcNext);
+      next.set(destPage, dstNext);
+      return next;
+    });
+    if (activeNoteId === note.id) setActiveNotePage(destPage);
   };
   /** 지우개가 메모 위를 지나갈 때도 이 함수로 지운다 - 그때는 지금 노트창이
    * 열어 둔 쪽(activeNotePage)이 아니라 실제로 메모가 있는 그 쪽에서 지워야 하므로
@@ -849,7 +932,10 @@ export default function PreviewViewerPage() {
                             activeNoteId={n === activeNotePage ? activeNoteId : null}
                             onCreateNote={(x, y) => handleCreateNote(n, x, y)}
                             onSelectNote={(id) => handleSelectNote(n, id)}
-                            onMoveNote={(id, x, y) => handleMoveNote(n, id, x, y)}
+                            onNoteDragStart={(note, clientX, clientY) => handleNoteDragStart(n, note, clientX, clientY)}
+                            onNoteDragMove={handleNoteDragMove}
+                            onNoteDragEnd={handleNoteDragEnd}
+                            activeDragNoteId={draggingNote?.note.id ?? null}
                             onDeleteNote={(id) => handleDeleteNoteOnPage(n, id)}
                             onRequestDeselectTool={() => setTool("none")}
                             neighborAnnotation={
@@ -881,6 +967,24 @@ export default function PreviewViewerPage() {
                           onChange={setMagnifierRect}
                           onConfirm={handleMagnifierConfirm}
                         />
+                      )}
+
+                      {/* 두 쪽에 걸쳐 끄는 중인 메모의 "유령" - 각 쪽 안(overflow-hidden)이
+                          아니라 두 쪽을 통째로 감싸는 이 레이어에 그려서, 중앙 경계를
+                          넘나들어도 잘리지 않고 계속 보인다. */}
+                      {draggingNote && (
+                        <div
+                          className="pointer-events-none absolute z-30 max-w-[60%] -translate-y-1/2 whitespace-pre rounded border border-dashed border-brand-500 bg-brand-50/90 px-1 leading-tight text-slate-900 shadow-lg"
+                          style={{
+                            left: `${draggingNote.fx * 100}%`,
+                            top: `${draggingNote.fy * 100}%`,
+                            fontSize:
+                              (draggingNote.note.fontSize ?? DEFAULT_NOTE_FONT_SIZE) *
+                              (boxWidth / STROKE_WIDTH_REFERENCE),
+                          }}
+                        >
+                          {draggingNote.note.text || "✎"}
+                        </div>
                       )}
                     </div>
                   </div>

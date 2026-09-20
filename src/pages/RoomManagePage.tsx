@@ -337,8 +337,18 @@ export default function RoomManagePage() {
         )}
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold">
+            <h1 className="flex items-center gap-2 text-xl font-bold">
               {room.grade}학년 {room.classNum}반 관리
+              {textbook && (
+                <button
+                  className="rounded-lg bg-green-600 px-3 py-1 text-xs font-semibold text-white hover:bg-green-700"
+                  onClick={() =>
+                    navigate(`/room/${roomId}/textbook/${textbook.id}?asTeacher=1`)
+                  }
+                >
+                  교재 들어가기
+                </button>
+              )}
             </h1>
             <p className="text-sm text-slate-500">
               {room.teacherName} 선생님 · {textbook?.title ?? "교재 없음"}

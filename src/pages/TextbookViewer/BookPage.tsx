@@ -50,7 +50,16 @@ interface BookPageProps {
   activeNoteId: string | null;
   onCreateNote: (x: number, y: number) => void;
   onSelectNote: (id: string) => void;
-  onMoveNote: (id: string, x: number, y: number) => void;
+  /** 메모를 실제로 끌기 시작한 순간(부모가 두 쪽에 걸친 유령 레이어를 띄우기
+   * 시작함) 한 번, 끄는 동안 매 pointermove마다, 손을 뗐을 때 한 번 불린다. 두
+   * 쪽 보기에서 경계를 넘어가도 메모가 잘리지 않고 계속 보이려면 실제 이동은
+   * 부모(TextbookViewerPage)가 화면 전체 좌표 기준으로 처리해야 한다. */
+  onNoteDragStart: (note: PlacedNote, clientX: number, clientY: number) => void;
+  onNoteDragMove: (clientX: number, clientY: number) => void;
+  onNoteDragEnd: (clientX: number, clientY: number) => void;
+  /** 지금 두 쪽에 걸쳐 드래그 중인 메모의 id(부모가 관리) - 이 쪽에 있는
+   * 메모여도 이 값과 같으면 제자리에는 안 보이게 한다. */
+  activeDragNoteId?: string | null;
   /** 지우개가 메모 위를 지나가면 그 메모를 통째로 지운다(실수로 지웠으면 undo로
    * 되살릴 수 있다). 없으면 지우개는 필기만 지운다. */
   onDeleteNote?: (id: string) => void;
@@ -98,7 +107,10 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     activeNoteId,
     onCreateNote,
     onSelectNote,
-    onMoveNote,
+    onNoteDragStart,
+    onNoteDragMove,
+    onNoteDragEnd,
+    activeDragNoteId,
     onDeleteNote,
     onRequestDeselectTool,
     neighborAnnotation,
@@ -261,9 +273,12 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
           active={tool === "note"}
           readOnly={readOnly}
           pageWidth={boxWidth}
+          activeDragNoteId={activeDragNoteId}
           onCreate={onCreateNote}
           onSelect={onSelectNote}
-          onMove={onMoveNote}
+          onDragStart={onNoteDragStart}
+          onDragMove={onNoteDragMove}
+          onDragEnd={onNoteDragEnd}
         />
       )}
       <ActivityZoneOverlay

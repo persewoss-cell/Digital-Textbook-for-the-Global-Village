@@ -211,13 +211,22 @@ export function Toolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-200 bg-white px-1 py-2 lg:gap-1 lg:px-2">
-      <button
-        className={`btn-ghost !px-1 text-xs ${showToc ? "bg-brand-100 text-brand-700" : ""}`}
-        title="목차 보이기/숨기기"
-        onClick={onToggleToc}
-      >
-        📚 <span className="hidden lg:inline">목차</span>
-      </button>
+      <div className="relative">
+        <button
+          className={`btn-ghost !px-1 text-xs ${showToc ? "bg-brand-100 text-brand-700" : ""}`}
+          title="목차 보이기 (끄려면 오른쪽 클릭)"
+          onClick={() => {
+            if (!showToc) onToggleToc();
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            if (showToc) onToggleToc();
+          }}
+        >
+          📚 <span className="hidden lg:inline">목차</span>
+          {showToc && <SelectedDot />}
+        </button>
+      </div>
 
       <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
 
@@ -488,13 +497,22 @@ export function Toolbar({
           📷 <span className="hidden lg:inline">캡처저장</span>
         </button>
 
-        <button
-          className={`btn-ghost shrink-0 !px-1 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
-          title="노트창 보이기/숨기기"
-          onClick={onToggleNotes}
-        >
-          📝 <span className="hidden lg:inline">노트</span>
-        </button>
+        <div className="relative">
+          <button
+            className={`btn-ghost shrink-0 !px-1 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
+            title="노트창 보이기 (끄려면 오른쪽 클릭)"
+            onClick={() => {
+              if (!showNotes) onToggleNotes();
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              if (showNotes) onToggleNotes();
+            }}
+          >
+            📝 <span className="hidden lg:inline">노트</span>
+            {showNotes && <SelectedDot />}
+          </button>
+        </div>
       </div>
     </div>
   );

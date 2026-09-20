@@ -27,7 +27,7 @@ import {
 } from "@/types";
 import { BookPage, type BookPageHandle } from "./BookPage";
 import { AnnotationLayer, type AnnotationLayerHandle, STROKE_WIDTH_REFERENCE } from "./AnnotationLayer";
-import { Toolbar, type SearchResult } from "./Toolbar";
+import { Toolbar, type SearchResult, DEFAULT_ERASER_SIZE } from "./Toolbar";
 import { TocPanel } from "./TocPanel";
 import { NotesPanel } from "./NotesPanel";
 import { DEFAULT_NOTE_FONT_SIZE } from "./NotesOverlay";
@@ -111,7 +111,7 @@ export default function TextbookViewerPage() {
   const [color, setColor] = useState("#ef4444");
   const [penStyleId, setPenStyleId] = useState<PenStyleId>(DEFAULT_PEN_STYLE);
   const activePenStyle = PEN_STYLES.find((p) => p.id === penStyleId) ?? PEN_STYLES[0];
-  const [eraserSize, setEraserSize] = useState(10);
+  const [eraserSize, setEraserSize] = useState(DEFAULT_ERASER_SIZE);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
   const [notesByPage, setNotesByPage] = useState<Map<number, PlacedNote[]>>(new Map());
@@ -540,6 +540,13 @@ export default function TextbookViewerPage() {
     setViewMode(m);
     if (m === "spread") setCurrentPage((p) => spreadStart(p));
   };
+
+  // 전체화면은 주로 모바일/태블릿에서 쓰는 몰입 모드라, 그 안에서는 두 쪽 보기로
+  // 고정한다(툴바에서도 두쪽/한쪽 토글 자체를 뺐다 - Toolbar의 compact 참고).
+  useEffect(() => {
+    if (isFullscreen) handleViewModeChange("spread");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFullscreen]);
 
   // +/- 버튼으로 확대·축소할 때, 지금 화면 한가운데 보이던 지점이 계속 한가운데
   // 있도록 스크롤을 보정한다(핀치줌이 손가락 사이 지점을 고정하는 것과 같은 원리).

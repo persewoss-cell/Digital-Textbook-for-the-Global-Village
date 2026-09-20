@@ -1,7 +1,7 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { PdfPageCanvas } from "./PdfPageCanvas";
-import { AnnotationLayer, type AnnotationLayerHandle } from "./AnnotationLayer";
+import { AnnotationLayer, type AnnotationLayerHandle, STROKE_WIDTH_REFERENCE } from "./AnnotationLayer";
 import { NotesOverlay } from "./NotesOverlay";
 import { PageLinkOverlay } from "./PageLinkOverlay";
 import { detectPageLinks, type PageLink } from "./pageLinks";
@@ -168,10 +168,14 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
 
   const markNotesForErase = (clientX: number, clientY: number, rect: DOMRect) => {
     if (tool !== "eraser" || readOnly || !onDeleteNote) return;
+    // eraserSize는 STROKE_WIDTH_REFERENCE 기준의 반지름이므로, 화면에 실제로 보이는
+    // 지우개 원(AnnotationLayer의 eraserDisplayRadius와 같은 계산)만큼의 CSS px로
+    // 환산해야 화면에 보이는 원과 똑같은 범위에서 메모도 함께 지워진다.
+    const eraserDisplayRadius = (boxWidth / STROKE_WIDTH_REFERENCE) * eraserSize;
     for (const note of noteItems) {
       const nx = rect.left + note.x * rect.width;
       const ny = rect.top + note.y * rect.height;
-      if (Math.hypot(clientX - nx, clientY - ny) <= eraserSize + NOTE_ERASE_PADDING) {
+      if (Math.hypot(clientX - nx, clientY - ny) <= eraserDisplayRadius + NOTE_ERASE_PADDING) {
         pendingErasedNoteIdsRef.current.add(note.id);
       }
     }

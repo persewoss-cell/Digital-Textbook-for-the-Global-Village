@@ -399,11 +399,10 @@ export const AnnotationLayer = forwardRef<
         const canvas = canvasRef.current;
         if (!canvas) return;
         const [px, py] = toLocal(clientX, clientY);
-        // radius는 화면(CSS) 기준 반지름으로 넘어온다 - 이 쪽(이웃) 캔버스도 자기
-        // 해상도가 화면 크기와 다를 수 있으므로, eraseAt과 똑같이 이 캔버스 자신의
-        // 배율로 다시 환산해야 한다.
-        const rect = canvas.getBoundingClientRect();
-        const scaledRadius = rect.width > 0 ? radius * (canvas.width / rect.width) : radius;
+        // radius는 STROKE_WIDTH_REFERENCE 기준 값으로 넘어온다 - 이 쪽(이웃)
+        // 캔버스도 자기 해상도가 다를 수 있으므로, eraseAt과 똑같이 이 캔버스
+        // 자신의 canvas.width 기준으로 다시 환산해야 한다.
+        const scaledRadius = (canvas.width / STROKE_WIDTH_REFERENCE) * radius;
         externalErasingDraft.current = eraseAtPoint(
           externalErasingDraft.current ?? strokesRef.current,
           px,
@@ -468,6 +467,11 @@ export const AnnotationLayer = forwardRef<
 
   const strokeWidth = tool === "colorPen" ? penWidth : isShapeTool(tool) ? 2.5 : 1.4;
   const strokeAlpha = tool === "colorPen" ? penAlpha : 1;
+  // 화면에 보여줄 지우개 미리보기 원의 반지름(CSS px) - eraserSize(반지름, 가상
+  // 쪽 너비 STROKE_WIDTH_REFERENCE 기준)를 이 쪽이 실제로 표시되는 너비(displayWidth)
+  // 비율로 환산한다. 그래야 실제로 지워지는 캔버스 반지름(canvas.width 기준 환산,
+  // eraseAt 참고)과 항상 같은 자리/크기를 가리킨다.
+  const eraserDisplayRadius = (displayWidth / STROKE_WIDTH_REFERENCE) * eraserSize;
 
   /** 이 쪽 경계 안에서 끝난 획은 그대로 커밋하고, 두 쪽 보기에서 옆 쪽 경계 너머로
    * 넘어간 획은 넘어간 부분만큼 옆 쪽에도 같이 커밋해서, 볼펜이나 도형을 두 쪽에
@@ -557,15 +561,11 @@ export const AnnotationLayer = forwardRef<
     const fx = px / canvas.width;
     const onSelfSide = !neighborAnnotation || (neighborAnnotation.boundaryFx === 1 ? fx <= 1 : fx >= 0);
     if (onSelfSide) {
-      // eraserSize는 화면(CSS)에 보이는 지우개 원의 반지름이다. px/py(그리고 이
-      // eraseAtPoint가 비교하는 획 좌표)는 캔버스 내부 해상도(canvas.width) 기준이라,
-      // 이 해상도가 화면에 실제로 보이는 크기(rect.width)보다 클 때(고해상도로
-      // 미리 그려 둔 쪽일 때 흔함) eraserSize를 그대로 쓰면 화면에 보이는 원보다
-      // 훨씬 좁은 범위만 지워져서, 눈에 보이는 자리를 눌러도 안 지워지는 것처럼
-      // 느껴진다. 화면 대비 캔버스 배율만큼 반지름도 같이 키워야 실제로 보이는
-      // 원 크기만큼 지워진다.
-      const rect = canvas.getBoundingClientRect();
-      const radius = rect.width > 0 ? eraserSize * (canvas.width / rect.width) : eraserSize;
+      // eraserSize는 stroke.width나 노트 글씨 크기와 똑같이 STROKE_WIDTH_REFERENCE
+      // 기준의 "가상 쪽 너비" 단위(반지름)다. 그 기준을 캔버스 내부 해상도
+      // (canvas.width) 비율로 환산해야, 확대/축소나 쪽 크기와 무관하게 항상
+      // "쪽 너비의 몇 %" 크기로 지워진다(펜 굵기가 커지고 작아지는 것과 같은 원리).
+      const radius = (canvas.width / STROKE_WIDTH_REFERENCE) * eraserSize;
       erasingDraft.current = eraseAtPoint(erasingDraft.current ?? strokes, px, py, canvas.width, canvas.height, radius);
       redraw(erasingDraft.current);
       return;
@@ -736,10 +736,10 @@ export const AnnotationLayer = forwardRef<
         <div
           className="pointer-events-none absolute z-50 rounded-full border-2 border-slate-500 bg-slate-400/20"
           style={{
-            left: hoverPos.x - eraserSize,
-            top: hoverPos.y - eraserSize,
-            width: eraserSize * 2,
-            height: eraserSize * 2,
+            left: hoverPos.x - eraserDisplayRadius,
+            top: hoverPos.y - eraserDisplayRadius,
+            width: eraserDisplayRadius * 2,
+            height: eraserDisplayRadius * 2,
           }}
         />
       )}

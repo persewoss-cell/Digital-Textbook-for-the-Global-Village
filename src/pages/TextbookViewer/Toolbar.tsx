@@ -37,11 +37,23 @@ export interface SearchResult {
 }
 
 const COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7"];
-const ERASER_SIZES = [
-  { label: "S", value: 6 },
-  { label: "M", value: 10 },
-  { label: "L", value: 16 },
-];
+
+// 지우개 반지름 9단계 - STROKE_WIDTH_REFERENCE(=600, 펜 굵기/메모 글씨 크기와 같은
+// 기준의 "가상 쪽 너비") 기준값이라, 필기 굵기나 노트 글씨처럼 쪽 크기(확대/축소)에
+// 비례해서 커지고 작아진다. 가장 큰 9단계는 지름이 쪽 너비의 1/4 정도(반지름 =
+// 600/4/2 = 75), 가장 작은 1단계는 노트 최소 글씨 크기(8, NotesPanel의
+// MIN_FONT_SIZE와 같음) 정도의 지름이 되도록, 그 사이를 등비수열로 9단계 나눈다.
+const ERASER_MIN_RADIUS = 4; // 지름 8 (교재의 가장 작은 글씨 크기 정도)
+const ERASER_MAX_RADIUS = 75; // 지름 150 = 쪽 너비(600)의 1/4
+const ERASER_SIZES = Array.from({ length: 9 }, (_, i) =>
+  Math.round(ERASER_MIN_RADIUS * Math.pow(ERASER_MAX_RADIUS / ERASER_MIN_RADIUS, i / 8)),
+);
+export const DEFAULT_ERASER_SIZE = ERASER_SIZES[4];
+// 목록 안에서 미리보기 원을 그릴 때 쓰는 화면상 크기(px) - 실제 지우개 반지름은
+// 쪽 크기에 비례해 계속 달라지므로, 이 미리보기는 "상대적으로 몇 번째로 큰지"만
+// 보여주는 고정된 크기다.
+const ERASER_PREVIEW_MIN_PX = 8;
+const ERASER_PREVIEW_MAX_PX = 34;
 
 /** 도구가 선택돼 있음을 보여주는 아이콘 오른쪽 위 빨간 점. */
 function SelectedDot() {
@@ -163,31 +175,35 @@ export function Toolbar({
   const [query, setQuery] = useState("");
   const [penMenuOpen, setPenMenuOpen] = useState(false);
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
+  const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
   const penWrapRef = useRef<HTMLDivElement>(null);
   const shapeWrapRef = useRef<HTMLDivElement>(null);
+  const eraserWrapRef = useRef<HTMLDivElement>(null);
 
   const isShapeTool = (t: AnnotationTool): t is ShapeTool =>
     (SHAPE_TOOL_ORDER as string[]).includes(t);
 
-  // 펜/도형 종류 선택 창은, 색상까지 골라야만 닫히는 게 아니라 교재에 그리기
+  // 펜/도형/지우개 크기 선택 창은, 무언가 골라야만 닫히는 게 아니라 교재에 그리기
   // 시작하거나(그 순간 캔버스에서 pointerdown이 일어남) 다른 아이콘을 누르는 등
   // 창 밖 아무 곳이나 다시 조작하면 바로 닫혀야 자연스럽다. capture 단계에서
   // 감지해야 실제로 그리기가 시작되기 전에(그 pointerdown이 캔버스에 도달하기
   // 전에) 먼저 닫을 수 있다.
   useEffect(() => {
-    if (!penMenuOpen && !shapeMenuOpen) return;
+    if (!penMenuOpen && !shapeMenuOpen && !eraserMenuOpen) return;
     const onPointerDownCapture = (e: PointerEvent) => {
       const target = e.target as Node;
       const insidePen = !!penWrapRef.current?.contains(target);
       const insideShape = !!shapeWrapRef.current?.contains(target);
-      if (!insidePen && !insideShape) {
+      const insideEraser = !!eraserWrapRef.current?.contains(target);
+      if (!insidePen && !insideShape && !insideEraser) {
         setPenMenuOpen(false);
         setShapeMenuOpen(false);
+        setEraserMenuOpen(false);
       }
     };
     document.addEventListener("pointerdown", onPointerDownCapture, true);
     return () => document.removeEventListener("pointerdown", onPointerDownCapture, true);
-  }, [penMenuOpen, shapeMenuOpen]);
+  }, [penMenuOpen, shapeMenuOpen, eraserMenuOpen]);
 
   // 도구가 새로 선택될 때(연필/색펜/도형/지우개/화이트보드) 잠깐 "오른쪽 버튼으로
   // 해제할 수 있다"는 안내를 보여준다.
@@ -249,25 +265,30 @@ export function Toolbar({
         </>
       )}
 
-      {/* view mode */}
-      <div className="flex overflow-hidden rounded-lg border border-slate-300">
-        <button
-          className={`px-1.5 py-1 text-xs font-semibold ${viewMode === "spread" ? "bg-brand-600 text-white" : "bg-white text-slate-600"}`}
-          onClick={() => onViewModeChange("spread")}
-          title="두 쪽 보기"
-        >
-          두쪽
-        </button>
-        <button
-          className={`px-1.5 py-1 text-xs font-semibold ${viewMode === "single" ? "bg-brand-600 text-white" : "bg-white text-slate-600"}`}
-          onClick={() => onViewModeChange("single")}
-          title="한 쪽 크게 보기"
-        >
-          한쪽
-        </button>
-      </div>
+      {/* view mode: 전체화면(모바일/태블릿 중심 모드)에서는 항상 두 쪽 보기로
+          고정하므로 이 토글 자체를 뺀다. */}
+      {!compact && (
+        <>
+          <div className="flex overflow-hidden rounded-lg border border-slate-300">
+            <button
+              className={`px-1.5 py-1 text-xs font-semibold ${viewMode === "spread" ? "bg-brand-600 text-white" : "bg-white text-slate-600"}`}
+              onClick={() => onViewModeChange("spread")}
+              title="두 쪽 보기"
+            >
+              두쪽
+            </button>
+            <button
+              className={`px-1.5 py-1 text-xs font-semibold ${viewMode === "single" ? "bg-brand-600 text-white" : "bg-white text-slate-600"}`}
+              onClick={() => onViewModeChange("single")}
+              title="한 쪽 크게 보기"
+            >
+              한쪽
+            </button>
+          </div>
 
-      <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
+          <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
+        </>
+      )}
 
       <span className="text-sm font-semibold text-slate-600">
         {currentPage} / {numPages}쪽
@@ -426,27 +447,62 @@ export function Toolbar({
               )}
             </div>
 
-            <div className="relative">
+            {/* 지우개: 색펜/도형처럼 누르면 크기를 고르는 창이 뜬다. 이미 선택된
+                상태(빨간 점)에서 다시 누르면 색펜/도형과 똑같이 창을 다시 띄우지
+                않고 바로 꺼진다. */}
+            <div className="relative" ref={eraserWrapRef}>
               <button
                 className={`btn-ghost !px-1 ${tool === "eraser" ? "bg-brand-100 text-brand-700" : ""}`}
                 title="지우개"
-                onClick={() => onToolChange(tool === "eraser" ? "none" : "eraser")}
+                onClick={() => {
+                  if (tool === "eraser") {
+                    onToolChange("none");
+                    setEraserMenuOpen(false);
+                    return;
+                  }
+                  setEraserMenuOpen((v) => !v);
+                  setPenMenuOpen(false);
+                  setShapeMenuOpen(false);
+                }}
               >
                 <EraserIcon className="h-4 w-4" />
                 {tool === "eraser" && <SelectedDot />}
               </button>
               {hintKey === "eraser" && <DeselectHint />}
+              {eraserMenuOpen && (
+                <div className="absolute left-0 top-9 z-20 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                  <p className="mb-1.5 text-[11px] font-semibold text-slate-400">지우개 크기</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {ERASER_SIZES.map((size, i) => {
+                      const previewPx =
+                        ERASER_PREVIEW_MIN_PX +
+                        ((ERASER_PREVIEW_MAX_PX - ERASER_PREVIEW_MIN_PX) * i) / (ERASER_SIZES.length - 1);
+                      return (
+                        <button
+                          key={size}
+                          className={`flex items-center justify-center rounded-lg border py-2 ${
+                            tool === "eraser" && eraserSize === size
+                              ? "border-brand-500 bg-brand-50"
+                              : "border-slate-200 hover:bg-slate-50"
+                          }`}
+                          title={`${i + 1}단계`}
+                          onClick={() => {
+                            onEraserSizeChange(size);
+                            onToolChange("eraser");
+                            setEraserMenuOpen(false);
+                          }}
+                        >
+                          <span
+                            className="rounded-full bg-slate-500"
+                            style={{ width: previewPx, height: previewPx }}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-            {tool === "eraser" &&
-              ERASER_SIZES.map((s) => (
-                <button
-                  key={s.value}
-                  className={`rounded-lg px-1.5 text-xs font-semibold ${eraserSize === s.value ? "bg-brand-100 text-brand-700" : "text-slate-500"}`}
-                  onClick={() => onEraserSizeChange(s.value)}
-                >
-                  {s.label}
-                </button>
-              ))}
             <button
               className="btn-ghost !px-1 disabled:opacity-30"
               title="실행 취소"
@@ -478,6 +534,7 @@ export function Toolbar({
                 🗑️ <span className="hidden lg:inline">모두 지우기</span>
               </button>
             )}
+            <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
             <button
               className={`btn-ghost !px-1 text-xs ${isFullscreen ? "bg-brand-100 text-brand-700" : ""}`}
               title={isFullscreen ? "전체화면 나가기" : "전체화면"}

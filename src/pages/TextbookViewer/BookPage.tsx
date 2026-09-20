@@ -9,7 +9,7 @@ import { ActivityZoneOverlay } from "./ActivityZoneOverlay";
 import { detectActivityZones, type ActivityZone } from "./activityZones";
 import { detectPageImages, type ImageRegion } from "./pageImages";
 import { MediaPopup } from "./MediaPopup";
-import type { AnnotationTool, PlacedNote, Stroke } from "@/types";
+import type { AnnotationTool, PenStyleId, PlacedNote, Stroke } from "@/types";
 
 export interface BookPageHandle {
   undo: () => void;
@@ -45,6 +45,7 @@ interface BookPageProps {
   persist?: boolean;
   penWidth?: number;
   penAlpha?: number;
+  penStyleId?: PenStyleId;
   showNotes: boolean;
   noteItems: PlacedNote[];
   activeNoteId: string | null;
@@ -99,6 +100,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     persist,
     penWidth,
     penAlpha,
+    penStyleId,
     showNotes,
     noteItems,
     activeNoteId,
@@ -270,6 +272,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
         persist={persist}
         penWidth={penWidth}
         penAlpha={penAlpha}
+        penStyleId={penStyleId}
         neighborAnnotation={neighborAnnotation}
       />
       {showNotes && (

@@ -1,5 +1,14 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { PEN_STYLES, type AnnotationTool, type PenStyleId, type ShapeTool } from "@/types";
+import {
+  PENCIL_BASE_WIDTH,
+  PEN_STYLES,
+  WIDTH_LEVELS,
+  levelForWidth,
+  widthForLevel,
+  type AnnotationTool,
+  type PenStyleId,
+  type ShapeTool,
+} from "@/types";
 import { SHAPE_TOOLS as SHAPE_TOOL_ORDER } from "./AnnotationLayer";
 
 const SHAPE_META: Record<ShapeTool, { icon: string; title: string }> = {
@@ -97,6 +106,25 @@ function ColorSwatches({ color, onColorChange }: { color: string; onColorChange:
   );
 }
 
+/** 굵기 1~10단계를 고르는 슬라이더. 실제 픽셀 굵기가 아니라 단계(정수)만 다루고,
+ * 그 단계 ↔ 실제 굵기 변환은 부르는 쪽(widthForLevel/levelForWidth)에서 한다. */
+function WidthSlider({ level, onLevelChange }: { level: number; onLevelChange: (level: number) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="range"
+        min={1}
+        max={WIDTH_LEVELS}
+        step={1}
+        value={level}
+        onChange={(e) => onLevelChange(Number(e.target.value))}
+        className="h-1.5 w-full accent-brand-600"
+      />
+      <span className="w-4 text-right text-[11px] font-semibold text-slate-500">{level}</span>
+    </div>
+  );
+}
+
 export function Toolbar({
   viewMode,
   onViewModeChange,
@@ -108,6 +136,10 @@ export function Toolbar({
   onColorChange,
   penStyleId,
   onPenStyleChange,
+  penWidth,
+  onPenWidthChange,
+  pencilWidth,
+  onPencilWidthChange,
   eraserSize,
   onEraserSizeChange,
   onUndo,
@@ -143,6 +175,12 @@ export function Toolbar({
   onColorChange: (c: string) => void;
   penStyleId: PenStyleId;
   onPenStyleChange: (id: PenStyleId) => void;
+  /** 지금 선택된 색펜 종류(penStyleId)의 실제 굵기(px, STROKE_WIDTH_REFERENCE 기준) */
+  penWidth: number;
+  onPenWidthChange: (width: number) => void;
+  /** 연필(색 없는 검정 연필)의 실제 굵기 */
+  pencilWidth: number;
+  onPencilWidthChange: (width: number) => void;
   eraserSize: number;
   onEraserSizeChange: (n: number) => void;
   onUndo: () => void;
@@ -176,9 +214,11 @@ export function Toolbar({
   const [penMenuOpen, setPenMenuOpen] = useState(false);
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false);
   const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
+  const [pencilMenuOpen, setPencilMenuOpen] = useState(false);
   const penWrapRef = useRef<HTMLDivElement>(null);
   const shapeWrapRef = useRef<HTMLDivElement>(null);
   const eraserWrapRef = useRef<HTMLDivElement>(null);
+  const pencilWrapRef = useRef<HTMLDivElement>(null);
 
   const isShapeTool = (t: AnnotationTool): t is ShapeTool =>
     (SHAPE_TOOL_ORDER as string[]).includes(t);
@@ -189,23 +229,27 @@ export function Toolbar({
   // 감지해야 실제로 그리기가 시작되기 전에(그 pointerdown이 캔버스에 도달하기
   // 전에) 먼저 닫을 수 있다.
   useEffect(() => {
-    if (!penMenuOpen && !shapeMenuOpen && !eraserMenuOpen) return;
+    if (!penMenuOpen && !shapeMenuOpen && !eraserMenuOpen && !pencilMenuOpen) return;
     const onPointerDownCapture = (e: PointerEvent) => {
       const target = e.target as Node;
       const insidePen = !!penWrapRef.current?.contains(target);
       const insideShape = !!shapeWrapRef.current?.contains(target);
       const insideEraser = !!eraserWrapRef.current?.contains(target);
-      // "완전히 세 창 다 밖일 때만 닫기"로 묶어 두면, 예를 들어 지우개 창이 열린
+      const insidePencil = !!pencilWrapRef.current?.contains(target);
+      // "완전히 네 창 다 밖일 때만 닫기"로 묶어 두면, 예를 들어 지우개 창이 열린
       // 채로 색펜 아이콘(penWrapRef 안)을 눌렀을 때 그 클릭이 "펜 쪽 안"이라는
       // 이유로 지우개 창까지 안 닫히는 문제가 있었다. 각 창은 자기 것이 아닌
       // 클릭이면 무조건 닫혀야 한다 - 자기 자신은 각자의 onClick이 알아서 처리한다.
+      // 연필 굵기 창도 같은 규칙으로 닫는다 - 특히 캔버스에 실제로 그리기 시작하면
+      // (그 pointerdown은 이 네 wrapper 중 어디에도 안 속하므로) 자동으로 닫힌다.
       if (!insidePen) setPenMenuOpen(false);
       if (!insideShape) setShapeMenuOpen(false);
       if (!insideEraser) setEraserMenuOpen(false);
+      if (!insidePencil) setPencilMenuOpen(false);
     };
     document.addEventListener("pointerdown", onPointerDownCapture, true);
     return () => document.removeEventListener("pointerdown", onPointerDownCapture, true);
-  }, [penMenuOpen, shapeMenuOpen, eraserMenuOpen]);
+  }, [penMenuOpen, shapeMenuOpen, eraserMenuOpen, pencilMenuOpen]);
 
   // 도구가 새로 선택될 때(연필/색펜/도형/지우개/화이트보드) 잠깐 "오른쪽 버튼으로
   // 해제할 수 있다"는 안내를 보여준다.
@@ -326,16 +370,39 @@ export function Toolbar({
           <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
           {/* annotation tools */}
           <div className="flex items-center gap-0.5">
-            <div className="relative">
+            <div className="relative" ref={pencilWrapRef}>
               <button
                 className={`btn-ghost !px-1 ${tool === "pen" ? "bg-brand-100 text-brand-700" : ""}`}
                 title="연필"
-                onClick={() => onToolChange(tool === "pen" ? "none" : "pen")}
+                onClick={() => {
+                  if (tool === "pen") {
+                    onToolChange("none");
+                    setPencilMenuOpen(false);
+                    return;
+                  }
+                  // 연필을 고르면 바로 쓸 수 있어야 하므로 굵기는 이미 기본값(중간)으로
+                  // 정해져 있고, 그 옆에 굵기를 조정할 수 있는 창만 잠깐 띄워 준다 -
+                  // 실제로 쓰기 시작하면(캔버스에 pointerdown) 위 effect가 자동으로 닫는다.
+                  onToolChange("pen");
+                  setPencilMenuOpen(true);
+                  setPenMenuOpen(false);
+                  setShapeMenuOpen(false);
+                  setEraserMenuOpen(false);
+                }}
               >
                 ✏️
                 {tool === "pen" && <SelectedDot />}
               </button>
               {hintKey === "pen" && <DeselectHint />}
+              {pencilMenuOpen && (
+                <div className="absolute left-1/2 top-9 z-20 w-48 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                  <p className="mb-1.5 text-[11px] font-semibold text-slate-400">굵기</p>
+                  <WidthSlider
+                    level={levelForWidth(pencilWidth, PENCIL_BASE_WIDTH)}
+                    onLevelChange={(level) => onPencilWidthChange(widthForLevel(PENCIL_BASE_WIDTH, level))}
+                  />
+                </div>
+              )}
             </div>
 
             {/* 색펜: 누르면 펜 종류 + 색상을 고르는 창이 뜬다 */}
@@ -355,6 +422,8 @@ export function Toolbar({
                   }
                   setPenMenuOpen((v) => !v);
                   setShapeMenuOpen(false);
+                  setEraserMenuOpen(false);
+                  setPencilMenuOpen(false);
                 }}
               >
                 🖊️
@@ -362,7 +431,7 @@ export function Toolbar({
               </button>
               {hintKey === "colorPen" && <DeselectHint />}
               {penMenuOpen && (
-                <div className="absolute left-0 top-9 z-20 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                <div className="absolute left-1/2 top-9 z-20 w-56 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
                   <p className="mb-1.5 text-[11px] font-semibold text-slate-400">펜 종류</p>
                   <div className="mb-3 grid grid-cols-2 gap-1.5">
                     {PEN_STYLES.map((s) => (
@@ -381,6 +450,15 @@ export function Toolbar({
                         {s.label}
                       </button>
                     ))}
+                  </div>
+                  <p className="mb-1.5 text-[11px] font-semibold text-slate-400">굵기</p>
+                  <div className="mb-3">
+                    <WidthSlider
+                      level={levelForWidth(penWidth, PEN_STYLES.find((s) => s.id === penStyleId)!.width)}
+                      onLevelChange={(level) =>
+                        onPenWidthChange(widthForLevel(PEN_STYLES.find((s) => s.id === penStyleId)!.width, level))
+                      }
+                    />
                   </div>
                   <p className="mb-1.5 text-[11px] font-semibold text-slate-400">색상</p>
                   <ColorSwatches
@@ -409,6 +487,8 @@ export function Toolbar({
                   }
                   setShapeMenuOpen((v) => !v);
                   setPenMenuOpen(false);
+                  setEraserMenuOpen(false);
+                  setPencilMenuOpen(false);
                 }}
               >
                 🔷 <span className="hidden lg:inline">도형</span>
@@ -416,7 +496,7 @@ export function Toolbar({
               </button>
               {hintKey === "shape" && <DeselectHint />}
               {shapeMenuOpen && (
-                <div className="absolute left-0 top-9 z-20 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                <div className="absolute left-1/2 top-9 z-20 w-56 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
                   <p className="mb-1.5 text-[11px] font-semibold text-slate-400">도형 종류</p>
                   <div className="mb-3 grid grid-cols-3 gap-1.5">
                     {SHAPE_TOOLS.map((s) => (
@@ -465,6 +545,7 @@ export function Toolbar({
                   setEraserMenuOpen((v) => !v);
                   setPenMenuOpen(false);
                   setShapeMenuOpen(false);
+                  setPencilMenuOpen(false);
                 }}
               >
                 <EraserIcon className="h-4 w-4" />
@@ -472,7 +553,7 @@ export function Toolbar({
               </button>
               {hintKey === "eraser" && <DeselectHint />}
               {eraserMenuOpen && (
-                <div className="absolute left-0 top-9 z-20 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+                <div className="absolute left-1/2 top-9 z-20 w-56 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
                   <p className="mb-1.5 text-[11px] font-semibold text-slate-400">지우개 크기</p>
                   <div className="grid grid-cols-3 gap-1.5">
                     {ERASER_SIZES.map((size, i) => {

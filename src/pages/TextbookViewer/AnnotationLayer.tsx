@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { saveAnnotation, watchAnnotation } from "@/lib/firestore";
-import type { DrawTool, ShapeTool, Stroke } from "@/types";
+import type { DrawTool, PenStyleId, ShapeTool, Stroke } from "@/types";
 
 // iOS Safari 등에서 캔버스가 너무 크면(가로/세로 한 변 기준) 그리기가 깨지거나
 // 캔버스가 비어버리는 문제가 있어 안전선을 둔다 (PdfPageCanvas와 동일한 이유).
@@ -99,7 +99,7 @@ export interface AnnotationLayerHandle {
    * 쪽이 자기 캔버스 기준으로 알아서 변환해 정확히 이어붙는다. */
   commitExternalPoints: (
     clientPoints: number[],
-    meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number },
+    meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number; penStyleId?: PenStyleId },
   ) => void;
   /** 옆 쪽에서 그리는 중(아직 손을 떼지 않음)인 획이 경계를 넘어온 부분을
    * 실시간으로 미리 보여준다 - 손을 뗄 때까지 기다렸다 한 번에 나타나면 중앙에서
@@ -107,7 +107,7 @@ export interface AnnotationLayerHandle {
    * 한다. 아직 커밋(저장)하지는 않는다. */
   previewExternalPoints: (
     clientPoints: number[],
-    meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number },
+    meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number; penStyleId?: PenStyleId },
   ) => void;
   /** 옆 쪽으로 넘어왔던 미리보기를 지운다(다시 이 쪽 밖으로 나갔거나, 드래그가
    * 끝나 커밋됐거나, 취소됐을 때). */
@@ -129,6 +129,50 @@ const PENCIL_COLOR = "#52525b"; // 연필은 항상 회색 연필 느낌으로 �
  * 훨씬 두꺼워 보이므로, 그런 곳에서는 widthScale로 비례해서 줄여줘야 한다. */
 export const STROKE_WIDTH_REFERENCE = 600;
 
+// 0~1 사이 결정적(같은 seed면 항상 같은 값) 의사난수 - Math.random()을 쓰면 획을
+// 다시 그릴 때마다(새 획 추가, 확대/축소, 쪽 이동 등 매우 잦음) 질감이 매번 달라져
+// 깜빡이는 것처럼 보이므로, 점 위치 등 획 자체의 값에서 뽑아낸 seed로 항상 같은
+// "그날의 질감"이 나오게 한다.
+function seededRandom(seed: number): number {
+  const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/** 색연필처럼 보이도록, 한 획을 살짝씩 어긋난(지터) 여러 겹의 얇고 반투명한
+ * 선으로 겹쳐 그려서 매끈한 단색 대신 거칠고 알갱이가 보이는 느낌을 낸다. seed는
+ * 획의 시작점 좌표에서 뽑아서, 같은 획은 다시 그려도(redraw) 항상 같은 모양이 되고
+ * 서로 다른 획끼리는 겹치는 무늬가 반복되지 않게 한다. */
+function drawColorPencilStroke(
+  ctx: CanvasRenderingContext2D,
+  stroke: Stroke,
+  w: number,
+  h: number,
+  widthScale: number,
+) {
+  const pts = stroke.points;
+  const baseWidth = Math.max(0.5, stroke.width * widthScale);
+  const baseAlpha = stroke.alpha ?? 0.8;
+  const strokeSeed = (pts[0] * 97.13 + pts[1] * 131.71) * 1000;
+  const PASSES = 4;
+  ctx.strokeStyle = stroke.color;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (let pass = 0; pass < PASSES; pass++) {
+    ctx.globalAlpha = baseAlpha * 0.35;
+    ctx.lineWidth = baseWidth * (0.55 + seededRandom(strokeSeed + pass * 7.13) * 0.5);
+    ctx.beginPath();
+    for (let i = 0; i < pts.length; i += 2) {
+      const jx = (seededRandom(strokeSeed + pass * 13.7 + i * 0.31) - 0.5) * baseWidth * 0.6;
+      const jy = (seededRandom(strokeSeed + pass * 19.3 + i * 0.47) - 0.5) * baseWidth * 0.6;
+      const x = pts[i] * w + jx;
+      const y = pts[i + 1] * h + jy;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+}
+
 export function drawStroke(
   ctx: CanvasRenderingContext2D,
   stroke: Stroke,
@@ -137,6 +181,10 @@ export function drawStroke(
   widthScale = 1,
 ) {
   if (stroke.points.length < 4) return;
+  if (stroke.tool === "colorPen" && stroke.penStyleId === "colorPencil") {
+    drawColorPencilStroke(ctx, stroke, w, h, widthScale);
+    return;
+  }
   ctx.strokeStyle = stroke.tool === "pen" ? PENCIL_COLOR : stroke.color;
   ctx.globalAlpha = stroke.alpha ?? 1;
   ctx.lineWidth = stroke.width * widthScale;
@@ -262,9 +310,14 @@ export const AnnotationLayer = forwardRef<
     futureMap: Map<number, Stroke[][]>;
     /** false면 서버에서 불러오거나 저장하지 않고 화면에서만 그려진다 (교재 체험 모드용). */
     persist?: boolean;
-    /** 색펜(볼펜/형광펜/색연필/사인펜)의 굵기·투명도. 도형/연필에는 영향을 주지 않는다. */
+    /** 색펜(볼펜/형광펜/색연필/사인펜)의 굵기·투명도. 도형/연필에는 영향을 주지 않는다.
+     * 연필(tool==="pen")일 때는 부모가 이 값에 연필 굵기를 넣어서 넘긴다. */
     penWidth?: number;
     penAlpha?: number;
+    /** 지금 선택된 색펜 종류 - 색연필(colorPencil)일 때만 질감 있게 그리는 데 쓴다.
+     * 커밋되는 획에도 함께 저장해서, 나중에 다시 그릴 때도(새로고침 등) 같은
+     * 질감으로 그려지게 한다. */
+    penStyleId?: PenStyleId;
     /** 두 쪽 보기에서 이 쪽의 옆(경계) 너머로 그은/지운 부분을 넘겨줄 옆 쪽.
      * boundaryFx는 이 쪽 기준 경계 위치(왼쪽 이웃이면 0, 오른쪽 이웃이면 1)다.
      * page는 그 옆 쪽의 실제 쪽 번호(되돌리기를 두 쪽 다 걸치게 하는 데 씀). 한
@@ -291,6 +344,7 @@ export const AnnotationLayer = forwardRef<
     persist = true,
     penWidth = 2.5,
     penAlpha = 1,
+    penStyleId,
     neighborAnnotation,
   },
   ref,
@@ -367,7 +421,14 @@ export const AnnotationLayer = forwardRef<
         if (points.length < 4) return;
         commit([
           ...strokesRef.current,
-          { tool: meta.tool as "pen" | "colorPen", color: meta.color, width: meta.width, alpha: meta.alpha, points },
+          {
+            tool: meta.tool as "pen" | "colorPen",
+            color: meta.color,
+            width: meta.width,
+            alpha: meta.alpha,
+            penStyleId: meta.penStyleId,
+            points,
+          },
         ]);
       },
       previewExternalPoints: (clientPoints, meta) => {
@@ -388,6 +449,7 @@ export const AnnotationLayer = forwardRef<
           color: meta.color,
           width: meta.width,
           alpha: meta.alpha,
+          penStyleId: meta.penStyleId,
           points,
         });
       },
@@ -465,7 +527,7 @@ export const AnnotationLayer = forwardRef<
     ];
   };
 
-  const strokeWidth = tool === "colorPen" ? penWidth : isShapeTool(tool) ? 2.5 : 1.4;
+  const strokeWidth = tool === "colorPen" || tool === "pen" ? penWidth : isShapeTool(tool) ? 2.5 : 1.4;
   const strokeAlpha = tool === "colorPen" ? penAlpha : 1;
   // 화면에 보여줄 지우개 미리보기 원의 반지름(CSS px) - eraserSize(반지름, 가상
   // 쪽 너비 STROKE_WIDTH_REFERENCE 기준)를 이 쪽이 실제로 표시되는 너비(displayWidth)
@@ -478,12 +540,19 @@ export const AnnotationLayer = forwardRef<
    * 걸쳐 자연스럽게 이어 그릴 수 있게 한다. */
   const commitAcrossBoundary = (
     points: number[],
-    meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number },
+    meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number; penStyleId?: PenStyleId },
   ) => {
     if (!neighborAnnotation) {
       commit([
         ...strokesRef.current,
-        { tool: meta.tool as "pen" | "colorPen", color: meta.color, width: meta.width, alpha: meta.alpha, points },
+        {
+          tool: meta.tool as "pen" | "colorPen",
+          color: meta.color,
+          width: meta.width,
+          alpha: meta.alpha,
+          penStyleId: meta.penStyleId,
+          points,
+        },
       ]);
       return;
     }
@@ -498,6 +567,7 @@ export const AnnotationLayer = forwardRef<
           color: meta.color,
           width: meta.width,
           alpha: meta.alpha,
+          penStyleId: meta.penStyleId,
           points: r.points,
         })),
       ]);
@@ -530,7 +600,7 @@ export const AnnotationLayer = forwardRef<
    * 떼기 전까지는 중앙에서 끊겨 보이지 않도록, 매 pointermove마다 부른다. */
   const previewAcrossBoundary = (
     points: number[],
-    meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number },
+    meta: { tool: DrawTool | ShapeTool; color: string; width: number; alpha: number; penStyleId?: PenStyleId },
   ) => {
     if (!neighborAnnotation) return;
     const canvas = canvasRef.current;
@@ -636,14 +706,15 @@ export const AnnotationLayer = forwardRef<
     if (!drawing.current) return;
     const [x, y] = toLocal(e.clientX, e.clientY);
     drawing.current.push(x / canvasRef.current!.width, y / canvasRef.current!.height);
-    redraw(strokes, {
-      tool: tool as "pen" | "colorPen",
+    const drawMeta = {
+      tool: tool as DrawTool,
       color,
       width: strokeWidth,
       alpha: strokeAlpha,
-      points: drawing.current,
-    });
-    previewAcrossBoundary(drawing.current, { tool: tool as DrawTool, color, width: strokeWidth, alpha: strokeAlpha });
+      penStyleId: tool === "colorPen" ? penStyleId : undefined,
+    };
+    redraw(strokes, { ...drawMeta, tool: drawMeta.tool as "pen" | "colorPen", points: drawing.current });
+    previewAcrossBoundary(drawing.current, drawMeta);
   };
 
   // 실시간 미리보기를 옆 쪽에 남겨 둔 채로 손을 떼면(커밋으로 대체되지 않는 경우,
@@ -705,7 +776,13 @@ export const AnnotationLayer = forwardRef<
     drawing.current = null;
     clearNeighborPreview();
     if (points.length < 4) return; // ignore accidental taps
-    commitAcrossBoundary(points, { tool: tool as DrawTool, color, width: strokeWidth, alpha: strokeAlpha });
+    commitAcrossBoundary(points, {
+      tool: tool as DrawTool,
+      color,
+      width: strokeWidth,
+      alpha: strokeAlpha,
+      penStyleId: tool === "colorPen" ? penStyleId : undefined,
+    });
   };
 
   const interactive = !readOnly && tool !== "none";

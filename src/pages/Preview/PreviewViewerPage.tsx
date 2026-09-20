@@ -7,7 +7,11 @@ import { getTextbook, updateTextbookChapters } from "@/lib/firestore";
 import { extractPageText, extractRealChapters, loadPdf } from "@/lib/pdf";
 import {
   DEFAULT_PEN_STYLE,
+  DEFAULT_PENCIL_WIDTH_LEVEL,
+  DEFAULT_WIDTH_LEVEL,
+  PENCIL_BASE_WIDTH,
   PEN_STYLES,
+  widthForLevel,
   type AnnotationTool,
   type PenStyleId,
   type PlacedNote,
@@ -71,7 +75,16 @@ export default function PreviewViewerPage() {
   const [tool, setTool] = useState<AnnotationTool>("none");
   const [color, setColor] = useState("#ef4444");
   const [penStyleId, setPenStyleId] = useState<PenStyleId>(DEFAULT_PEN_STYLE);
+  const [penWidthByStyle, setPenWidthByStyle] = useState<Record<PenStyleId, number>>(() => {
+    const initial = {} as Record<PenStyleId, number>;
+    PEN_STYLES.forEach((s) => {
+      initial[s.id] = widthForLevel(s.width, DEFAULT_WIDTH_LEVEL[s.id]);
+    });
+    return initial;
+  });
+  const [pencilWidth, setPencilWidth] = useState(() => widthForLevel(PENCIL_BASE_WIDTH, DEFAULT_PENCIL_WIDTH_LEVEL));
   const activePenStyle = PEN_STYLES.find((p) => p.id === penStyleId) ?? PEN_STYLES[0];
+  const effectivePenWidth = tool === "pen" ? pencilWidth : penWidthByStyle[penStyleId];
   const [eraserSize, setEraserSize] = useState(DEFAULT_ERASER_SIZE);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
@@ -848,6 +861,10 @@ export default function PreviewViewerPage() {
     onColorChange: setColor,
     penStyleId,
     onPenStyleChange: setPenStyleId,
+    penWidth: penWidthByStyle[penStyleId],
+    onPenWidthChange: (width: number) => setPenWidthByStyle((prev) => ({ ...prev, [penStyleId]: width })),
+    pencilWidth,
+    onPencilWidthChange: setPencilWidth,
     eraserSize,
     onEraserSizeChange: setEraserSize,
     onUndo: handleUndo,
@@ -949,8 +966,9 @@ export default function PreviewViewerPage() {
                     historyMap={whiteboardHistoryMap.current}
                     futureMap={whiteboardFutureMap.current}
                     persist={false}
-                    penWidth={activePenStyle.width}
+                    penWidth={effectivePenWidth}
                     penAlpha={activePenStyle.alpha}
+                    penStyleId={penStyleId}
                   />
                 </div>
             </div>
@@ -995,8 +1013,9 @@ export default function PreviewViewerPage() {
                             historyMap={historyMapRef.current}
                             futureMap={futureMapRef.current}
                             persist={false}
-                            penWidth={activePenStyle.width}
+                            penWidth={effectivePenWidth}
                             penAlpha={activePenStyle.alpha}
+                            penStyleId={penStyleId}
                             showNotes
                             noteItems={notesByPage.get(n) ?? []}
                             activeNoteId={n === activeNotePage ? activeNoteId : null}

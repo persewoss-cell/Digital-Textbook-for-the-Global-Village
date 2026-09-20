@@ -51,10 +51,15 @@ export interface Stroke {
   color: string;
   width: number;
   alpha?: number; // 0-1, 형광펜처럼 반투명한 느낌을 위한 값. 없으면 1(불투명)
+  // 색연필처럼 펜 종류에 따라 선을 다르게(질감 있게) 그려야 할 때 어떤 종류였는지
+  // 기억해 둔다. colorPen이 아니거나 옛날에 저장된 획에는 없을 수 있다.
+  penStyleId?: PenStyleId;
   points: number[]; // flattened [x1,y1,x2,y2,...] in 0-1 normalized page coordinates
 }
 
-/** 색펜을 눌렀을 때 고를 수 있는 펜 종류. 굵기/투명도 조합으로 느낌을 다르게 낸다. */
+/** 색펜을 눌렀을 때 고를 수 있는 펜 종류. 굵기/투명도 조합으로 느낌을 다르게 낸다.
+ * width는 그 종류를 처음 고를 때 기준이 되는 "기본" 굵기 - 실제 그려지는 굵기는
+ * 사용자가 슬라이더로 조정한 값(1~10단계)을 따로 저장해서 쓴다. */
 export type PenStyleId = "ballpoint" | "highlighter" | "colorPencil" | "marker";
 export interface PenStyleDef {
   id: PenStyleId;
@@ -69,6 +74,42 @@ export const PEN_STYLES: PenStyleDef[] = [
   { id: "highlighter", label: "형광펜", width: 14, alpha: 0.35 },
 ];
 export const DEFAULT_PEN_STYLE: PenStyleId = "ballpoint";
+
+// 연필(색 없는 검정 연필)의 "기본" 굵기 - AnnotationLayer에서 예전에 고정값으로
+// 쓰던 것과 같은 값이라, 굵기 조정 슬라이더를 새로 넣어도 지금까지 그려 둔
+// 연필 필기의 두께가 그대로 유지된다.
+export const PENCIL_BASE_WIDTH = 1.4;
+
+// 굵기 조정 슬라이더는 1~10 정수 단계로 보여준다. 가장 얇은 1단계는 그 펜의
+// "기본 굵기"의 5분의 1, 가장 굵은 10단계는 형광펜의 기본 굵기 - 즉 어떤 펜을
+// 골라도 "이 펜다운 얇음"부터 "형광펜만큼 굵게"까지 조절할 수 있게 한다.
+export const WIDTH_LEVELS = 10;
+export const MAX_PEN_WIDTH = PEN_STYLES.find((s) => s.id === "highlighter")!.width;
+
+export function widthForLevel(baseWidth: number, level: number): number {
+  const min = baseWidth / 5;
+  const clampedLevel = Math.min(WIDTH_LEVELS, Math.max(1, level));
+  if (MAX_PEN_WIDTH <= min) return min;
+  return min + (MAX_PEN_WIDTH - min) * ((clampedLevel - 1) / (WIDTH_LEVELS - 1));
+}
+
+export function levelForWidth(width: number, baseWidth: number): number {
+  const min = baseWidth / 5;
+  if (MAX_PEN_WIDTH <= min) return 1;
+  const level = 1 + ((width - min) / (MAX_PEN_WIDTH - min)) * (WIDTH_LEVELS - 1);
+  return Math.min(WIDTH_LEVELS, Math.max(1, Math.round(level)));
+}
+
+// 각 펜 종류를 처음 골랐을 때(아직 슬라이더를 만진 적 없을 때) 기본으로 보여줄
+// 굵기 단계. 볼펜/색연필/사인펜/연필은 중간(5), 형광펜은 원래도 굵은 펜이라
+// 조금 더 굵은 7단계를 기본으로 둔다.
+export const DEFAULT_WIDTH_LEVEL: Record<PenStyleId, number> = {
+  ballpoint: 5,
+  marker: 5,
+  colorPencil: 5,
+  highlighter: 7,
+};
+export const DEFAULT_PENCIL_WIDTH_LEVEL = 5;
 
 export interface PlacedNote {
   id: string;

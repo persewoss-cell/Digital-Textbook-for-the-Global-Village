@@ -17,7 +17,11 @@ import { getRoom, participantKey } from "@/lib/rooms";
 import { isRoomUnlocked, loadParticipantSession, type ParticipantSession } from "@/lib/session";
 import {
   DEFAULT_PEN_STYLE,
+  DEFAULT_PENCIL_WIDTH_LEVEL,
+  DEFAULT_WIDTH_LEVEL,
+  PENCIL_BASE_WIDTH,
   PEN_STYLES,
+  widthForLevel,
   type AnnotationTool,
   type PenStyleId,
   type PlacedNote,
@@ -110,7 +114,20 @@ export default function TextbookViewerPage() {
   const [tool, setTool] = useState<AnnotationTool>("none");
   const [color, setColor] = useState("#ef4444");
   const [penStyleId, setPenStyleId] = useState<PenStyleId>(DEFAULT_PEN_STYLE);
+  // 색펜 종류별 굵기는 서로 독립적으로 기억해 둔다 - 색연필을 굵게 조정해 뒀다가
+  // 볼펜으로 바꿔도 볼펜 굵기는 그대로여야 자연스럽다(지우개 크기/색상처럼 유지되는
+  // 값). 처음에는 종류별 "기본" 단계(DEFAULT_WIDTH_LEVEL)로 계산한 굵기로 시작한다.
+  const [penWidthByStyle, setPenWidthByStyle] = useState<Record<PenStyleId, number>>(() => {
+    const initial = {} as Record<PenStyleId, number>;
+    PEN_STYLES.forEach((s) => {
+      initial[s.id] = widthForLevel(s.width, DEFAULT_WIDTH_LEVEL[s.id]);
+    });
+    return initial;
+  });
+  const [pencilWidth, setPencilWidth] = useState(() => widthForLevel(PENCIL_BASE_WIDTH, DEFAULT_PENCIL_WIDTH_LEVEL));
   const activePenStyle = PEN_STYLES.find((p) => p.id === penStyleId) ?? PEN_STYLES[0];
+  // 연필(tool==="pen")일 때는 연필 굵기를, 색펜일 때는 지금 고른 종류의 굵기를 쓴다.
+  const effectivePenWidth = tool === "pen" ? pencilWidth : penWidthByStyle[penStyleId];
   const [eraserSize, setEraserSize] = useState(DEFAULT_ERASER_SIZE);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
@@ -1017,6 +1034,10 @@ export default function TextbookViewerPage() {
     onColorChange: setColor,
     penStyleId,
     onPenStyleChange: setPenStyleId,
+    penWidth: penWidthByStyle[penStyleId],
+    onPenWidthChange: (width: number) => setPenWidthByStyle((prev) => ({ ...prev, [penStyleId]: width })),
+    pencilWidth,
+    onPencilWidthChange: setPencilWidth,
     eraserSize,
     onEraserSizeChange: setEraserSize,
     onUndo: handleUndo,
@@ -1124,8 +1145,9 @@ export default function TextbookViewerPage() {
                     historyMap={whiteboardHistoryMap.current}
                     futureMap={whiteboardFutureMap.current}
                     persist={false}
-                    penWidth={activePenStyle.width}
+                    penWidth={effectivePenWidth}
                     penAlpha={activePenStyle.alpha}
+                    penStyleId={penStyleId}
                   />
                 </div>
             </div>
@@ -1183,8 +1205,9 @@ export default function TextbookViewerPage() {
                             }}
                             historyMap={historyMapRef.current}
                             futureMap={futureMapRef.current}
-                            penWidth={activePenStyle.width}
+                            penWidth={effectivePenWidth}
                             penAlpha={activePenStyle.alpha}
+                            penStyleId={penStyleId}
                             showNotes
                             noteItems={notesByPage.get(n) ?? []}
                             activeNoteId={n === activeNotePage ? activeNoteId : null}

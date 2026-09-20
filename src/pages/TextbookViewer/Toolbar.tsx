@@ -469,8 +469,11 @@ export function Toolbar({
             >
               {/* "축소" 전용 아이콘(🗗 등)은 안드로이드/아이폰 기본 글꼴에서 지원하지
                   않아 빈 네모(글자 깨짐)로 보이는 경우가 많아서, 이미 잘 보이는 것이
-                  확인된 ⛶를 그대로 쓰고 배경색+글자로만 상태를 구분한다. */}
-              ⛶ <span className="hidden lg:inline">{isFullscreen ? "축소" : "전체화면"}</span>
+                  확인된 ⛶를 그대로 쓴다. 이 아이콘 하나로는(전체화면/축소 둘 다
+                  같은 모양) 핸드폰처럼 좁은 화면에서 배경색 차이만으로 상태를
+                  구분하기 어려워서, 다른 버튼과 달리 이 글자만은(hidden lg:inline
+                  없이) 화면 크기와 무관하게 항상 보이게 한다. */}
+              ⛶ <span>{isFullscreen ? "축소" : "전체화면"}</span>
             </button>
           </div>
           <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />

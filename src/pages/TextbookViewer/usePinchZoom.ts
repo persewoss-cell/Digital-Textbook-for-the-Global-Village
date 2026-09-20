@@ -19,21 +19,27 @@ interface PanState {
  * 화면만 떠 있어서 실제 회색 영역 div가 트리에 없는 상태)에서 effect가 한 번 실행되면
  * ref.current가 null인 채로 끝나 버리고, 의존성 배열이 바뀌지 않는 한 다시는 재시도하지
  * 않는 문제가 있었다(태블릿처럼 로딩이 오래 걸릴 때 핀치줌 이벤트 리스너 자체가 영영
- * 연결되지 않던 원인). 실제로 연결될 때까지 매 프레임 확인하다가, 연결되면 그 요소를
- * React state로 돌려줘서 effect가 자연스럽게 다시 실행되게 한다.
+ * 연결되지 않던 원인). 그런데 "처음 한 번 찾으면 그만 찾기"로는 부족하다 - 핸드폰을
+ * 세로에서 가로로 돌리는 등 PhoneScaleFit의 축소 래퍼가 있다/없다로 바뀌는 경계를
+ * 넘으면 이 div를 포함한 화면 전체가 통째로 마운트 해제되었다가 새로 마운트되는데,
+ * 그러면 ref.current는 완전히 다른(새) DOM 요소를 가리키게 된다 - "찾으면 멈추는"
+ * 방식은 이 교체를 영영 알아채지 못해서, 핀치줌 이벤트 리스너가 이미 화면에서
+ * 사라진 옛 요소에 계속 붙어 있는 채로 남아(더 이상 어떤 터치도 받지 못해) 핸드폰
+ * 모드에서 손가락 제스처로 확대·축소가 안 되는 문제로 이어졌다. 그래서 한 번 찾은
+ * 뒤에도 멈추지 않고, 컴포넌트가 떠 있는 동안 매 프레임 ref.current가 지난번과
+ * 다른 요소로 바뀌었는지 계속 확인해서 - 처음 나타날 때든, 나중에 통째로
+ * 새 요소로 바뀌든 - 항상 지금 진짜로 화면에 붙어 있는 요소를 돌려주게 한다.
  */
 function useAttachedElement<T extends HTMLElement>(ref: React.RefObject<T>): T | null {
   const [el, setEl] = useState<T | null>(ref.current);
   useEffect(() => {
-    if (ref.current) {
-      setEl(ref.current);
-      return;
-    }
     let raf = 0;
+    let last = ref.current;
+    setEl(last);
     const check = () => {
-      if (ref.current) {
-        setEl(ref.current);
-        return;
+      if (ref.current !== last) {
+        last = ref.current;
+        setEl(last);
       }
       raf = requestAnimationFrame(check);
     };

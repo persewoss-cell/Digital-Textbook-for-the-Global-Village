@@ -47,7 +47,8 @@ export interface SearchResult {
   snippet: string;
 }
 
-const COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7"];
+// 빨주노초파남보검 순서(무지개 색 + 검정)
+const COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#4f46e5", "#a855f7", "#000000"];
 
 // 지우개 반지름 9단계 - STROKE_WIDTH_REFERENCE(=600, 펜 굵기/메모 글씨 크기와 같은
 // 기준의 "가상 쪽 너비") 기준값이라, 필기 굵기나 노트 글씨처럼 쪽 크기(확대/축소)에
@@ -94,7 +95,7 @@ function DeselectHint() {
 
 function ColorSwatches({ color, onColorChange }: { color: string; onColorChange: (c: string) => void }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       {COLORS.map((c) => (
         <button
           key={c}

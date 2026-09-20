@@ -130,12 +130,12 @@ export function levelForPenWidth(styleId: PenStyleId, width: number, baseWidth: 
 }
 
 // 각 펜 종류를 처음 골랐을 때(아직 슬라이더를 만진 적 없을 때) 기본으로 보여줄
-// 굵기 단계. 연필/볼펜은 비교적 얇게 쓰는 펜이라 3단계, 색연필/사인펜은 좀 더
-// 두껍게 쓰는 펜이라 6단계, 형광펜은 원래도 굵은 펜이라 7단계를 기본으로 둔다.
+// 굵기 단계. 형광펜만 원래도 굵은 펜이라 7단계, 나머지(연필/볼펜/색연필/사인펜)는
+// 모두 3단계를 기본으로 둔다.
 export const DEFAULT_WIDTH_LEVEL: Record<PenStyleId, number> = {
   ballpoint: 3,
-  marker: 6,
-  colorPencil: 6,
+  marker: 3,
+  colorPencil: 3,
   highlighter: 7,
 };
 export const DEFAULT_PENCIL_WIDTH_LEVEL = 3;

@@ -195,11 +195,13 @@ export function Toolbar({
       const insidePen = !!penWrapRef.current?.contains(target);
       const insideShape = !!shapeWrapRef.current?.contains(target);
       const insideEraser = !!eraserWrapRef.current?.contains(target);
-      if (!insidePen && !insideShape && !insideEraser) {
-        setPenMenuOpen(false);
-        setShapeMenuOpen(false);
-        setEraserMenuOpen(false);
-      }
+      // "완전히 세 창 다 밖일 때만 닫기"로 묶어 두면, 예를 들어 지우개 창이 열린
+      // 채로 색펜 아이콘(penWrapRef 안)을 눌렀을 때 그 클릭이 "펜 쪽 안"이라는
+      // 이유로 지우개 창까지 안 닫히는 문제가 있었다. 각 창은 자기 것이 아닌
+      // 클릭이면 무조건 닫혀야 한다 - 자기 자신은 각자의 onClick이 알아서 처리한다.
+      if (!insidePen) setPenMenuOpen(false);
+      if (!insideShape) setShapeMenuOpen(false);
+      if (!insideEraser) setEraserMenuOpen(false);
     };
     document.addEventListener("pointerdown", onPointerDownCapture, true);
     return () => document.removeEventListener("pointerdown", onPointerDownCapture, true);

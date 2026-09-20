@@ -138,8 +138,13 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
   // 한 번으로 방금 지운 메모가 바로 되살아난다.
   const pendingErasedNoteIdsRef = useRef<Set<string>>(new Set());
   // 지우개 원(화면에 보이는 크기)에서 살짝 더 넉넉하게 잡아야, 작은 메모 아이콘도
-  // 정확히 겨냥하지 않아도 자연스럽게 지워진다.
-  const NOTE_ERASE_PADDING = 16;
+  // 정확히 겨냥하지 않아도 자연스럽게 지워진다. 다만 고정된 px 값을 쓰면 가장
+  // 작은 지우개(반지름이 몇 px밖에 안 됨)에서는 이 여유값이 지우개 자체보다
+  // 훨씬 커져서, "작은 지우개인데 메모는 멀리서도 지워진다"처럼 지우개 크기를
+  // 무색하게 만들어 버린다. 지우개 반지름에 비례한 값(+ 손가락으로도 누르기
+  // 편한 최소 여유)으로 바꿔서, 메모 지우기도 지우개 크기를 그대로 따라가게 한다.
+  const NOTE_ERASE_PADDING_RATIO = 0.4;
+  const NOTE_ERASE_PADDING_MIN = 3;
 
   useImperativeHandle(
     ref,
@@ -172,10 +177,11 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     // 지우개 원(AnnotationLayer의 eraserDisplayRadius와 같은 계산)만큼의 CSS px로
     // 환산해야 화면에 보이는 원과 똑같은 범위에서 메모도 함께 지워진다.
     const eraserDisplayRadius = (boxWidth / STROKE_WIDTH_REFERENCE) * eraserSize;
+    const notePadding = Math.max(NOTE_ERASE_PADDING_MIN, eraserDisplayRadius * NOTE_ERASE_PADDING_RATIO);
     for (const note of noteItems) {
       const nx = rect.left + note.x * rect.width;
       const ny = rect.top + note.y * rect.height;
-      if (Math.hypot(clientX - nx, clientY - ny) <= eraserDisplayRadius + NOTE_ERASE_PADDING) {
+      if (Math.hypot(clientX - nx, clientY - ny) <= eraserDisplayRadius + notePadding) {
         pendingErasedNoteIdsRef.current.add(note.id);
       }
     }

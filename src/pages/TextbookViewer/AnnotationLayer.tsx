@@ -692,7 +692,16 @@ export const AnnotationLayer = forwardRef<
       clearNeighborPreview();
       return;
     }
-    const points = drawing.current;
+    // 빠르게 그으면 pointermove 사이 간격이 캔버스 픽셀 기준으로 꽤 멀어질 수
+    // 있는데(도형은 이미 densifyPolyline으로 촘촘하게 쪼개 뒀지만, 자유롭게 손으로
+    // 그린 선은 그동안 그렇지 않았다), 그 상태로 저장해 두면 지우개가 점 하나만
+    // 지워도 그 점 앞뒤로 남은 점 사이 "전체 구간"이 통째로 안 그려져 버려서
+    // (eraseAtPoint가 점 단위로만 판단하고, 지워진 점을 기준으로 선을 두 조각으로
+    // 나누기 때문에) 작은 지우개로 살짝 스쳤을 뿐인데 훨씬 넓은 범위가 지워진
+    // 것처럼 보이는 문제가 있었다. 커밋 직전에 도형과 같은 기준으로 촘촘하게
+    // 다시 채워 넣어서, 지우개가 실제로 반지름만큼만 정확하게 지우게 한다.
+    const canvas = canvasRef.current!;
+    const points = densifyPolyline(drawing.current, canvas.width, canvas.height);
     drawing.current = null;
     clearNeighborPreview();
     if (points.length < 4) return; // ignore accidental taps

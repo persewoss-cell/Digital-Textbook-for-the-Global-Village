@@ -223,7 +223,12 @@ export function Toolbar({
     <div
       className={
         compact
-          ? "flex flex-nowrap items-center gap-0.5 overflow-x-auto"
+          ? // overflow-x-auto를 쓰면(가로로 넘칠 때 스크롤) CSS 규칙상 overflow-y도
+            // 덩달아 auto로 바뀌어서, 색펜/도형 버튼 아래로 펼쳐지는 메뉴(absolute,
+            // top-9)가 이 줄 높이에 잘려 안 보이는 문제가 있었다. 전체화면 모드는
+            // 주로 넓은 화면(태블릿/PC)에서 쓰므로 가로 스크롤은 포기하고 넘치면
+            // 그냥 넘치게 둔다.
+            "flex flex-nowrap items-center gap-0.5"
           : "flex flex-wrap items-center gap-0.5 border-b border-slate-200 bg-white px-1 py-2 lg:gap-1 lg:px-2"
       }
     >

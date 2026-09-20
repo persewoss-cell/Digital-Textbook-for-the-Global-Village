@@ -32,7 +32,6 @@ import { TocPanel } from "./TocPanel";
 import { NotesPanel } from "./NotesPanel";
 import { DEFAULT_NOTE_FONT_SIZE } from "./NotesOverlay";
 import { MagnifierOverlay, type MagnifierRect } from "./MagnifierOverlay";
-import { FullscreenBar } from "./FullscreenBar";
 import { usePinchZoom } from "./usePinchZoom";
 import type { ActivityZone } from "./activityZones";
 
@@ -139,10 +138,11 @@ export default function TextbookViewerPage() {
   const [showToc, setShowToc] = useState(() => isPhoneViewport() || window.innerWidth >= 1024);
   const [showNotes, setShowNotes] = useState(() => !isPhoneViewport());
 
-  // 전체화면(F11과 같은 브라우저 전체화면) 모드. 이 상태에서는 상단 툴바 대부분과
-  // 목차/노트 패널을 숨기고, 대신 오른쪽 위에 작은 축소판 툴바(FullscreenBar)만
-  // 떠 있게 한다. document.fullscreenElement를 기준으로 삼아서, 버튼이 아니라
-  // Esc키나 브라우저 UI로 빠져나가도 상태가 정확히 따라온다.
+  // 전체화면(F11과 같은 브라우저 전체화면) 모드. 이 상태에서는 목차/노트 패널과
+  // 아래쪽 두 번째 줄 툴바를 숨기고, 대신 촘촘한 축소판 툴바를 상단바의 로고
+  // 옆(AppShell의 right 자리, 원래 "나가기" 버튼이 있던 곳)에 끼워 넣는다.
+  // document.fullscreenElement를 기준으로 삼아서, 버튼이 아니라 Esc키나 브라우저
+  // UI로 빠져나가도 상태가 정확히 따라온다.
   const [isFullscreen, setIsFullscreen] = useState(false);
   useEffect(() => {
     const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
@@ -981,18 +981,61 @@ export default function TextbookViewerPage() {
     );
   }
 
+  const toolbarProps = {
+    viewMode,
+    onViewModeChange: handleViewModeChange,
+    zoom,
+    onZoomChange: handleZoomChange,
+    tool,
+    onToolChange: setTool,
+    color,
+    onColorChange: setColor,
+    penStyleId,
+    onPenStyleChange: setPenStyleId,
+    eraserSize,
+    onEraserSizeChange: setEraserSize,
+    onUndo: handleUndo,
+    onRedo: handleRedo,
+    onSearch: handleSearch,
+    searchResults,
+    onJumpToResult: jumpTo,
+    onCapture: handleCapture,
+    magnifierMode,
+    onToggleMagnifier: () => {
+      setMagnifierMode((v) => !v);
+      setTool("none");
+    },
+    onZoomReset: () => setZoom(1),
+    whiteboardMode,
+    onToggleWhiteboard: () => setWhiteboardMode((v) => !v),
+    onClearWhiteboard: () => whiteboardRef.current?.clear(),
+    isFullscreen,
+    onToggleFullscreen: handleToggleFullscreen,
+    showToc,
+    onToggleToc: () => setShowToc((v) => !v),
+    showNotes,
+    onToggleNotes: () => setShowNotes((v) => !v),
+    currentPage: printedCurrentPage,
+    numPages: printedNumPages,
+    readOnly,
+  };
+
   return (
     <PhoneScaleFit>
     <AppShell
       fullBleed
-      badge={`${room.grade}학년 ${room.classNum}반 · ${readOnly ? (location.state?.studentName ?? "학생") : asTeacher ? "선생님" : session?.name}`}
+      badge={isFullscreen ? undefined : `${room.grade}학년 ${room.classNum}반 · ${readOnly ? (location.state?.studentName ?? "학생") : asTeacher ? "선생님" : session?.name}`}
       right={
-        <button
-          className="btn-ghost"
-          onClick={() => navigate(readOnly || asTeacher ? `/room/${roomId}/manage` : "/")}
-        >
-          나가기
-        </button>
+        isFullscreen ? (
+          <Toolbar {...toolbarProps} compact />
+        ) : (
+          <button
+            className="btn-ghost"
+            onClick={() => navigate(readOnly || asTeacher ? `/room/${roomId}/manage` : "/")}
+          >
+            나가기
+          </button>
+        )
       }
     >
       <div className="flex h-full flex-col">
@@ -1001,46 +1044,7 @@ export default function TextbookViewerPage() {
             👀 {location.state?.studentName ?? "학생"}의 학습 화면을 실시간으로 보고 있어요 (읽기 전용)
           </div>
         )}
-        {!isFullscreen && (
-          <Toolbar
-            viewMode={viewMode}
-            onViewModeChange={handleViewModeChange}
-            zoom={zoom}
-            onZoomChange={handleZoomChange}
-            tool={tool}
-            onToolChange={setTool}
-            color={color}
-            onColorChange={setColor}
-            penStyleId={penStyleId}
-            onPenStyleChange={setPenStyleId}
-            eraserSize={eraserSize}
-            onEraserSizeChange={setEraserSize}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            onSearch={handleSearch}
-            searchResults={searchResults}
-            onJumpToResult={jumpTo}
-            onCapture={handleCapture}
-            magnifierMode={magnifierMode}
-            onToggleMagnifier={() => {
-              setMagnifierMode((v) => !v);
-              setTool("none");
-            }}
-            onZoomReset={() => setZoom(1)}
-            whiteboardMode={whiteboardMode}
-            onToggleWhiteboard={() => setWhiteboardMode((v) => !v)}
-            onClearWhiteboard={() => whiteboardRef.current?.clear()}
-            isFullscreen={isFullscreen}
-            onToggleFullscreen={handleToggleFullscreen}
-            showToc={showToc}
-            onToggleToc={() => setShowToc((v) => !v)}
-            showNotes={showNotes}
-            onToggleNotes={() => setShowNotes((v) => !v)}
-            currentPage={printedCurrentPage}
-            numPages={printedNumPages}
-            readOnly={readOnly}
-          />
-        )}
+        {!isFullscreen && <Toolbar {...toolbarProps} />}
 
         <div className="flex flex-1 overflow-hidden">
           {!whiteboardMode && !isFullscreen && showToc && (
@@ -1279,18 +1283,6 @@ export default function TextbookViewerPage() {
                   <p className="text-sm font-semibold text-slate-600">불러오는 중...</p>
                 </div>
               </div>
-            )}
-
-            {isFullscreen && (
-              <FullscreenBar
-                boundsRef={containerRef}
-                zoom={zoom}
-                onZoomChange={handleZoomChange}
-                onZoomReset={() => setZoom(1)}
-                currentPage={printedCurrentPage}
-                numPages={printedNumPages}
-                onExitFullscreen={handleToggleFullscreen}
-              />
             )}
           </div>
 

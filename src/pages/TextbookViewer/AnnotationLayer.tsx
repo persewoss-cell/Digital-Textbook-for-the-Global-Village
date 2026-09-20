@@ -399,13 +399,18 @@ export const AnnotationLayer = forwardRef<
         const canvas = canvasRef.current;
         if (!canvas) return;
         const [px, py] = toLocal(clientX, clientY);
+        // radius는 화면(CSS) 기준 반지름으로 넘어온다 - 이 쪽(이웃) 캔버스도 자기
+        // 해상도가 화면 크기와 다를 수 있으므로, eraseAt과 똑같이 이 캔버스 자신의
+        // 배율로 다시 환산해야 한다.
+        const rect = canvas.getBoundingClientRect();
+        const scaledRadius = rect.width > 0 ? radius * (canvas.width / rect.width) : radius;
         externalErasingDraft.current = eraseAtPoint(
           externalErasingDraft.current ?? strokesRef.current,
           px,
           py,
           canvas.width,
           canvas.height,
-          radius,
+          scaledRadius,
         );
         redraw(externalErasingDraft.current);
       },
@@ -552,7 +557,16 @@ export const AnnotationLayer = forwardRef<
     const fx = px / canvas.width;
     const onSelfSide = !neighborAnnotation || (neighborAnnotation.boundaryFx === 1 ? fx <= 1 : fx >= 0);
     if (onSelfSide) {
-      erasingDraft.current = eraseAtPoint(erasingDraft.current ?? strokes, px, py, canvas.width, canvas.height, eraserSize);
+      // eraserSize는 화면(CSS)에 보이는 지우개 원의 반지름이다. px/py(그리고 이
+      // eraseAtPoint가 비교하는 획 좌표)는 캔버스 내부 해상도(canvas.width) 기준이라,
+      // 이 해상도가 화면에 실제로 보이는 크기(rect.width)보다 클 때(고해상도로
+      // 미리 그려 둔 쪽일 때 흔함) eraserSize를 그대로 쓰면 화면에 보이는 원보다
+      // 훨씬 좁은 범위만 지워져서, 눈에 보이는 자리를 눌러도 안 지워지는 것처럼
+      // 느껴진다. 화면 대비 캔버스 배율만큼 반지름도 같이 키워야 실제로 보이는
+      // 원 크기만큼 지워진다.
+      const rect = canvas.getBoundingClientRect();
+      const radius = rect.width > 0 ? eraserSize * (canvas.width / rect.width) : eraserSize;
+      erasingDraft.current = eraseAtPoint(erasingDraft.current ?? strokes, px, py, canvas.width, canvas.height, radius);
       redraw(erasingDraft.current);
       return;
     }
@@ -582,7 +596,23 @@ export const AnnotationLayer = forwardRef<
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (tool === "eraser") {
-      setHoverPos({ x: e.clientX, y: e.clientY });
+      // 화면(viewport) 기준 좌표를 그대로 쓰면, 핸드폰 세로모드(PhoneScaleFit이
+      // 전체 화면을 transform: scale로 축소해 보여줄 때)에서 이 조상의 transform이
+      // position:fixed 자식의 기준(containing block)이 되어 버려 축소 비율만큼
+      // 커서가 왼쪽 위로 쏠려 보이는 버그가 있었다. position:absolute로 바꿔도,
+      // 이 값이 실제 화면(post-transform) 픽셀인 채로 그대로 CSS left/top에 쓰이면
+      // 그 CSS는 축소되기 "전" 좌표계로 해석되어 조상의 배율만큼 다시 안쪽으로
+      // 쏠려 보인다. rect(getBoundingClientRect)는 화면에 실제 보이는(축소된)
+      // 크기이고, displayWidth/Height는 축소되기 전 이 캔버스의 CSS 크기이므로,
+      // 그 비율만큼 되돌려 축소되기 전 좌표계 값으로 바꿔야 다시 배율이 곱해져도
+      // 정확히 포인터 아래에 온다.
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect && rect.width > 0 && rect.height > 0) {
+        setHoverPos({
+          x: ((e.clientX - rect.left) / rect.width) * displayWidth,
+          y: ((e.clientY - rect.top) / rect.height) * displayHeight,
+        });
+      }
     }
     if (tool === "eraser" && (erasingDraft.current || neighborEraseTouchedRef.current)) {
       eraseAt(e.clientX, e.clientY);
@@ -704,7 +734,7 @@ export const AnnotationLayer = forwardRef<
       />
       {tool === "eraser" && hoverPos && !readOnly && (
         <div
-          className="pointer-events-none fixed z-50 rounded-full border-2 border-slate-500 bg-slate-400/20"
+          className="pointer-events-none absolute z-50 rounded-full border-2 border-slate-500 bg-slate-400/20"
           style={{
             left: hoverPos.x - eraserSize,
             top: hoverPos.y - eraserSize,

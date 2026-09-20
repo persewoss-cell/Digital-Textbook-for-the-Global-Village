@@ -119,6 +119,7 @@ export function Toolbar({
   currentPage,
   numPages,
   readOnly,
+  compact,
 }: {
   viewMode: "single" | "spread";
   onViewModeChange: (m: "single" | "spread") => void;
@@ -153,6 +154,11 @@ export function Toolbar({
   currentPage: number;
   numPages: number;
   readOnly: boolean;
+  /** 전체화면 모드에서, 원래 두 번째 줄을 통째로 차지하던 툴바 대신 상단바의
+   * "지구마을 디지털 교재" 로고 옆에 한 줄로 작게 붙여 넣을 때 켠다 - 목차 버튼과
+   * 검색·캡처저장·노트 묶음은 빼고, 나머지(보기 방식/쪽수/확대·축소/돋보기/필기
+   * 도구/실행취소·다시실행/화이트보드/전체화면)만 촘촘하게 보여준다. */
+  compact?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [penMenuOpen, setPenMenuOpen] = useState(false);
@@ -214,19 +220,29 @@ export function Toolbar({
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-200 bg-white px-1 py-2 lg:gap-1 lg:px-2">
-      <div className="relative">
-        <button
-          className={`btn-ghost !px-1 text-xs ${showToc ? "bg-brand-100 text-brand-700" : ""}`}
-          title="목차 보이기/숨기기"
-          onClick={onToggleToc}
-        >
-          📚 <span className="hidden lg:inline">목차</span>
-          {showToc && <SelectedDot />}
-        </button>
-      </div>
+    <div
+      className={
+        compact
+          ? "flex flex-nowrap items-center gap-0.5 overflow-x-auto"
+          : "flex flex-wrap items-center gap-0.5 border-b border-slate-200 bg-white px-1 py-2 lg:gap-1 lg:px-2"
+      }
+    >
+      {!compact && (
+        <>
+          <div className="relative">
+            <button
+              className={`btn-ghost !px-1 text-xs ${showToc ? "bg-brand-100 text-brand-700" : ""}`}
+              title="목차 보이기/숨기기"
+              onClick={onToggleToc}
+            >
+              📚 <span className="hidden lg:inline">목차</span>
+              {showToc && <SelectedDot />}
+            </button>
+          </div>
 
-      <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
+          <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
+        </>
+      )}
 
       {/* view mode */}
       <div className="flex overflow-hidden rounded-lg border border-slate-300">
@@ -455,65 +471,68 @@ export function Toolbar({
       )}
 
       {/* 검색·캡처저장·노트는 항상 서로 줄바꿈 없이 한 줄로 붙어서, 툴바 오른쪽 끝에
-          (노트창이 뜨는 칸 바로 위에) 함께 자리하도록 한 묶음으로 둔다. */}
-      <div className="ml-auto flex flex-nowrap items-center gap-1">
-        {/* search: 팝오버가 아니라 항상 상단 줄에 보이도록 */}
-        <div className="relative flex items-center gap-1">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              onSearch(query);
-            }}
-            className="flex flex-nowrap items-center gap-1"
-          >
-            <input
-              className="input h-8 !w-10 !px-1 !py-1 text-xs lg:!w-24"
-              placeholder="교재 내 검색"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <button className="btn-ghost shrink-0 !px-1" type="submit" title="검색">
-              🔎
-            </button>
-          </form>
-          {query.trim() && (
-            <div className="absolute right-0 top-9 z-20 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
-              <div className="max-h-48 space-y-1 overflow-auto">
-                {searchResults.map((r, i) => (
-                  <button
-                    key={i}
-                    className="block w-full rounded-lg px-2 py-1 text-left text-xs hover:bg-slate-100"
-                    onClick={() => {
-                      onJumpToResult(r.page);
-                      setQuery("");
-                    }}
-                  >
-                    <span className="font-semibold text-brand-700">{r.page}쪽</span> {r.snippet}
-                  </button>
-                ))}
-                {searchResults.length === 0 && (
-                  <p className="px-2 py-1 text-xs text-slate-400">검색 결과가 없어요.</p>
-                )}
+          (노트창이 뜨는 칸 바로 위에) 함께 자리하도록 한 묶음으로 둔다. 전체화면의
+          축소판 줄에는 자리가 좁고 목차/노트 패널 자체도 그 모드에서는 안 보이므로 뺀다. */}
+      {!compact && (
+        <div className="ml-auto flex flex-nowrap items-center gap-1">
+          {/* search: 팝오버가 아니라 항상 상단 줄에 보이도록 */}
+          <div className="relative flex items-center gap-1">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                onSearch(query);
+              }}
+              className="flex flex-nowrap items-center gap-1"
+            >
+              <input
+                className="input h-8 !w-10 !px-1 !py-1 text-xs lg:!w-24"
+                placeholder="교재 내 검색"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <button className="btn-ghost shrink-0 !px-1" type="submit" title="검색">
+                🔎
+              </button>
+            </form>
+            {query.trim() && (
+              <div className="absolute right-0 top-9 z-20 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+                <div className="max-h-48 space-y-1 overflow-auto">
+                  {searchResults.map((r, i) => (
+                    <button
+                      key={i}
+                      className="block w-full rounded-lg px-2 py-1 text-left text-xs hover:bg-slate-100"
+                      onClick={() => {
+                        onJumpToResult(r.page);
+                        setQuery("");
+                      }}
+                    >
+                      <span className="font-semibold text-brand-700">{r.page}쪽</span> {r.snippet}
+                    </button>
+                  ))}
+                  {searchResults.length === 0 && (
+                    <p className="px-2 py-1 text-xs text-slate-400">검색 결과가 없어요.</p>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        <button className="btn-ghost shrink-0 !px-1" title="이 쪽 캡처 저장" onClick={onCapture}>
-          📷 <span className="hidden lg:inline">캡처저장</span>
-        </button>
-
-        <div className="relative">
-          <button
-            className={`btn-ghost shrink-0 !px-1 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
-            title="노트창 보이기/숨기기"
-            onClick={onToggleNotes}
-          >
-            📝 <span className="hidden lg:inline">노트</span>
-            {showNotes && <SelectedDot />}
+          <button className="btn-ghost shrink-0 !px-1" title="이 쪽 캡처 저장" onClick={onCapture}>
+            📷 <span className="hidden lg:inline">캡처저장</span>
           </button>
+
+          <div className="relative">
+            <button
+              className={`btn-ghost shrink-0 !px-1 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
+              title="노트창 보이기/숨기기"
+              onClick={onToggleNotes}
+            >
+              📝 <span className="hidden lg:inline">노트</span>
+              {showNotes && <SelectedDot />}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

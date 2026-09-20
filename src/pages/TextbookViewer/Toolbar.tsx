@@ -110,6 +110,8 @@ export function Toolbar({
   whiteboardMode,
   onToggleWhiteboard,
   onClearWhiteboard,
+  isFullscreen,
+  onToggleFullscreen,
   showToc,
   onToggleToc,
   showNotes,
@@ -142,6 +144,8 @@ export function Toolbar({
   whiteboardMode: boolean;
   onToggleWhiteboard: () => void;
   onClearWhiteboard: () => void;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
   showToc: boolean;
   onToggleToc: () => void;
   showNotes: boolean;
@@ -214,14 +218,8 @@ export function Toolbar({
       <div className="relative">
         <button
           className={`btn-ghost !px-1 text-xs ${showToc ? "bg-brand-100 text-brand-700" : ""}`}
-          title="목차 보이기 (끄려면 오른쪽 클릭)"
-          onClick={() => {
-            if (!showToc) onToggleToc();
-          }}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            if (showToc) onToggleToc();
-          }}
+          title="목차 보이기/숨기기"
+          onClick={onToggleToc}
         >
           📚 <span className="hidden lg:inline">목차</span>
           {showToc && <SelectedDot />}
@@ -443,6 +441,14 @@ export function Toolbar({
                 🗑️ <span className="hidden lg:inline">모두 지우기</span>
               </button>
             )}
+            <button
+              className={`btn-ghost !px-1 text-xs ${isFullscreen ? "bg-brand-100 text-brand-700" : ""}`}
+              title={isFullscreen ? "전체화면 나가기" : "전체화면"}
+              onClick={onToggleFullscreen}
+            >
+              {isFullscreen ? "🗗" : "⛶"}{" "}
+              <span className="hidden lg:inline">{isFullscreen ? "축소" : "전체화면"}</span>
+            </button>
           </div>
           <div className="mx-0.5 h-5 w-px shrink-0 bg-slate-200" />
         </>
@@ -500,14 +506,8 @@ export function Toolbar({
         <div className="relative">
           <button
             className={`btn-ghost shrink-0 !px-1 text-xs ${showNotes ? "bg-brand-100 text-brand-700" : ""}`}
-            title="노트창 보이기 (끄려면 오른쪽 클릭)"
-            onClick={() => {
-              if (!showNotes) onToggleNotes();
-            }}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              if (showNotes) onToggleNotes();
-            }}
+            title="노트창 보이기/숨기기"
+            onClick={onToggleNotes}
           >
             📝 <span className="hidden lg:inline">노트</span>
             {showNotes && <SelectedDot />}

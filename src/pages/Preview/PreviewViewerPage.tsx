@@ -25,6 +25,7 @@ import { TocPanel } from "@/pages/TextbookViewer/TocPanel";
 import { NotesPanel } from "@/pages/TextbookViewer/NotesPanel";
 import { DEFAULT_NOTE_FONT_SIZE } from "@/pages/TextbookViewer/NotesOverlay";
 import { MagnifierOverlay, type MagnifierRect } from "@/pages/TextbookViewer/MagnifierOverlay";
+import { FullscreenBar } from "@/pages/TextbookViewer/FullscreenBar";
 import { usePinchZoom } from "@/pages/TextbookViewer/usePinchZoom";
 import type { ActivityZone } from "@/pages/TextbookViewer/activityZones";
 
@@ -97,6 +98,23 @@ export default function PreviewViewerPage() {
   const [showToc, setShowToc] = useState(() => isPhoneViewport() || window.innerWidth >= 1024);
   const [showNotes, setShowNotes] = useState(() => !isPhoneViewport());
 
+  // 전체화면(F11과 같은 브라우저 전체화면) 모드. 이 상태에서는 상단 툴바 대부분과
+  // 목차/노트 패널을 숨기고, 대신 오른쪽 위에 작은 축소판 툴바(FullscreenBar)만
+  // 떠 있게 한다.
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const handleToggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void document.documentElement.requestFullscreen().catch(() => {});
+    }
+  };
+
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -114,8 +132,9 @@ export default function PreviewViewerPage() {
   // 동작은 두 쪽 다([n, 옆쪽])를 담아서, 되돌리기 한 번으로 두 쪽 모두 되돌아가게 한다.
   const lastDrawAction = useRef<{ seq: number; pages: number[] } | null>(null);
   const lastNoteAction = useRef<{ seq: number } | null>(null);
-  const lastUndoneType = useRef<"note" | "draw" | null>(null);
-  const lastUndoneDrawPages = useRef<number[] | null>(null);
+  // 되돌리기를 누른 순서를 그대로 기록해 뒀다가, 다시하기는 이 목록의 맨 뒤(가장
+  // 최근에 되돌린 것)부터 하나씩 꺼내 되돌린다 (TextbookViewerPage와 동일한 방식).
+  const redoLog = useRef<Array<{ type: "note" } | { type: "draw"; pages: number[] }>>([]);
   // 노트(메모) 실행취소는 쪽별로 따로 쌓지 않고 전역으로 하나만 쌓는다 - 메모를
   // 두 쪽에 걸쳐 옮기는 동작처럼 한 동작이 여러 쪽을 동시에 건드릴 수 있어서,
   // 각 항목이 자기가 건드린 쪽 번호 목록(entries)을 통째로 들고 있게 하면
@@ -267,6 +286,7 @@ export default function PreviewViewerPage() {
     stack.push({ seq, entries });
     if (stack.length > 50) stack.shift();
     noteFutureStack.current = [];
+    redoLog.current = [];
     lastNoteAction.current = { seq };
   };
   const pushNoteHistory = (page: number, prevItems: PlacedNote[]) =>
@@ -460,7 +480,7 @@ export default function PreviewViewerPage() {
       });
       const newTop = noteHistoryStack.current[noteHistoryStack.current.length - 1];
       lastNoteAction.current = newTop ? { seq: newTop.seq } : null;
-      lastUndoneType.current = "note";
+      redoLog.current.push({ type: "note" });
       return;
     }
 
@@ -469,34 +489,34 @@ export default function PreviewViewerPage() {
       // 하나의 동작으로 온전히 되돌아간다.
       const targets = undoRedoTargets(drawAction.pages);
       targets.forEach((p) => pageRefs.current.get(p)?.undo());
-      lastUndoneType.current = "draw";
-      lastUndoneDrawPages.current = targets;
+      redoLog.current.push({ type: "draw", pages: targets });
     }
   };
 
+  // redoLog 맨 뒤(가장 최근에 되돌린 것)부터 하나씩 꺼내 다시 실행한다 - 노트/필기가
+  // 번갈아 되돌려졌어도 항상 올바른 순서로, 다시 할 게 하나도 안 남을 때까지
+  // 누를 때마다 계속 이어진다.
   const handleRedo = () => {
     if (whiteboardMode) {
       whiteboardRef.current?.redo();
       return;
     }
-    if (lastUndoneType.current === "note") {
-      const entry = noteFutureStack.current.pop();
-      if (!entry) return;
-      const prevEntries = entry.entries.map(({ page }) => ({ page, prev: notesByPage.get(page) ?? [] }));
-      noteHistoryStack.current.push({ seq: entry.seq, entries: prevEntries });
+    const entry = redoLog.current.pop();
+    if (!entry) return;
+    if (entry.type === "note") {
+      const noteEntry = noteFutureStack.current.pop();
+      if (!noteEntry) return;
+      const prevEntries = noteEntry.entries.map(({ page }) => ({ page, prev: notesByPage.get(page) ?? [] }));
+      noteHistoryStack.current.push({ seq: noteEntry.seq, entries: prevEntries });
       setNotesByPage((prev) => {
         const next = new Map(prev);
-        entry.entries.forEach(({ page, next: nextItems }) => next.set(page, nextItems));
+        noteEntry.entries.forEach(({ page, next: nextItems }) => next.set(page, nextItems));
         return next;
       });
-      lastNoteAction.current = { seq: entry.seq };
-      lastUndoneType.current = null;
+      lastNoteAction.current = { seq: noteEntry.seq };
       return;
     }
-    if (lastUndoneType.current === "draw" && lastUndoneDrawPages.current) {
-      lastUndoneDrawPages.current.forEach((p) => pageRefs.current.get(p)?.redo());
-      lastUndoneType.current = null;
-    }
+    entry.pages.forEach((p) => pageRefs.current.get(p)?.redo());
   };
 
   // pageEl은 반드시 "확대해도 절대 사라지지 않는" 안정적인 요소여야 한다 - hover/누름
@@ -693,6 +713,22 @@ export default function PreviewViewerPage() {
     return { page: sourcePage, x: clamp(fx), y: clamp(fy) };
   };
 
+  /** resolveNoteDrop의 반대 방향 계산: 어느 쪽의 (x,y)를, 두 쪽 전체를 감싸는
+   * contentRef 기준 비율(fx,fy)로 바꾼다 (TextbookViewerPage와 동일한 방식). */
+  const noteToSpreadFxFy = (page: number, x: number, y: number): { fx: number; fy: number } | null => {
+    if (viewMode === "spread" && pagesToShow.length === 2) {
+      if (page === pagesToShow[0]) return { fx: x / 2, fy: y };
+      if (page === pagesToShow[1]) return { fx: (x + 1) / 2, fy: y };
+      return null;
+    }
+    if (viewMode === "spread" && pagesToShow.length === 1 && pagesToShow[0] === 1) {
+      if (page !== 1) return null;
+      return { fx: (x + 1) / 2, fy: y };
+    }
+    if (page !== pagesToShow[0]) return null;
+    return { fx: x, fy: y };
+  };
+
   const handleNoteDragStart = (sourcePage: number, note: PlacedNote, clientX: number, clientY: number) => {
     const rect = contentRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0 || rect.height === 0) return;
@@ -791,48 +827,54 @@ export default function PreviewViewerPage() {
       }
     >
       <div className="flex h-full flex-col">
-        <div className="bg-amber-50 px-4 py-1.5 text-center text-xs font-semibold text-amber-700">
-          🧪 교재 체험 모드예요. 여기서 한 필기와 메모는 저장되지 않아요.
-        </div>
-        <Toolbar
-          viewMode={viewMode}
-          onViewModeChange={handleViewModeChange}
-          zoom={zoom}
-          onZoomChange={handleZoomChange}
-          tool={tool}
-          onToolChange={setTool}
-          color={color}
-          onColorChange={setColor}
-          penStyleId={penStyleId}
-          onPenStyleChange={setPenStyleId}
-          eraserSize={eraserSize}
-          onEraserSizeChange={setEraserSize}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          onSearch={handleSearch}
-          searchResults={searchResults}
-          onJumpToResult={jumpTo}
-          onCapture={handleCapture}
-          magnifierMode={magnifierMode}
-          onToggleMagnifier={() => {
-            setMagnifierMode((v) => !v);
-            setTool("none");
-          }}
-          onZoomReset={() => setZoom(1)}
-          whiteboardMode={whiteboardMode}
-          onToggleWhiteboard={() => setWhiteboardMode((v) => !v)}
-          onClearWhiteboard={() => whiteboardRef.current?.clear()}
-          showToc={showToc}
-          onToggleToc={() => setShowToc((v) => !v)}
-          showNotes={showNotes}
-          onToggleNotes={() => setShowNotes((v) => !v)}
-          currentPage={printedCurrentPage}
-          numPages={printedNumPages}
-          readOnly={false}
-        />
+        {!isFullscreen && (
+          <div className="bg-amber-50 px-4 py-1.5 text-center text-xs font-semibold text-amber-700">
+            🧪 교재 체험 모드예요. 여기서 한 필기와 메모는 저장되지 않아요.
+          </div>
+        )}
+        {!isFullscreen && (
+          <Toolbar
+            viewMode={viewMode}
+            onViewModeChange={handleViewModeChange}
+            zoom={zoom}
+            onZoomChange={handleZoomChange}
+            tool={tool}
+            onToolChange={setTool}
+            color={color}
+            onColorChange={setColor}
+            penStyleId={penStyleId}
+            onPenStyleChange={setPenStyleId}
+            eraserSize={eraserSize}
+            onEraserSizeChange={setEraserSize}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onSearch={handleSearch}
+            searchResults={searchResults}
+            onJumpToResult={jumpTo}
+            onCapture={handleCapture}
+            magnifierMode={magnifierMode}
+            onToggleMagnifier={() => {
+              setMagnifierMode((v) => !v);
+              setTool("none");
+            }}
+            onZoomReset={() => setZoom(1)}
+            whiteboardMode={whiteboardMode}
+            onToggleWhiteboard={() => setWhiteboardMode((v) => !v)}
+            onClearWhiteboard={() => whiteboardRef.current?.clear()}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={handleToggleFullscreen}
+            showToc={showToc}
+            onToggleToc={() => setShowToc((v) => !v)}
+            showNotes={showNotes}
+            onToggleNotes={() => setShowNotes((v) => !v)}
+            currentPage={printedCurrentPage}
+            numPages={printedNumPages}
+            readOnly={false}
+          />
+        )}
 
         <div className="flex flex-1 overflow-hidden">
-          {!whiteboardMode && showToc && (
+          {!whiteboardMode && !isFullscreen && showToc && (
             <TocPanel
               title={textbook.title}
               chapters={textbook.chapters}
@@ -918,9 +960,11 @@ export default function PreviewViewerPage() {
                             readOnly={false}
                             onDraw={() => {
                               lastDrawAction.current = { seq: nextActionSeq(), pages: [n] };
+                              redoLog.current = [];
                             }}
                             onCompoundDraw={(pages) => {
                               lastDrawAction.current = { seq: nextActionSeq(), pages };
+                              redoLog.current = [];
                             }}
                             historyMap={historyMapRef.current}
                             futureMap={futureMapRef.current}
@@ -935,7 +979,6 @@ export default function PreviewViewerPage() {
                             onNoteDragStart={(note, clientX, clientY) => handleNoteDragStart(n, note, clientX, clientY)}
                             onNoteDragMove={handleNoteDragMove}
                             onNoteDragEnd={handleNoteDragEnd}
-                            activeDragNoteId={draggingNote?.note.id ?? null}
                             onDeleteNote={(id) => handleDeleteNoteOnPage(n, id)}
                             onRequestDeselectTool={() => setTool("none")}
                             neighborAnnotation={
@@ -969,9 +1012,44 @@ export default function PreviewViewerPage() {
                         />
                       )}
 
-                      {/* 두 쪽에 걸쳐 끄는 중인 메모의 "유령" - 각 쪽 안(overflow-hidden)이
-                          아니라 두 쪽을 통째로 감싸는 이 레이어에 그려서, 중앙 경계를
-                          넘나들어도 잘리지 않고 계속 보인다. */}
+                      {/* 지금 화면에 펼쳐진 쪽(들)의 메모를 실제로 그리는 자리 - 각 쪽 안의
+                          NotesOverlay는 클릭/드래그만 담당하는 투명한 히트박스일 뿐, 눈에
+                          보이는 내용은 전부 여기서 그린다. 두 쪽을 통째로 감싸는(overflow
+                          가 안 잘리는) 이 레이어에 그려야, 메모 글이 길어서 자기 쪽 경계를
+                          넘어가도(입력하는 도중이든 입력을 마친 뒤든) 잘리지 않고 옆 쪽
+                          위까지 계속 보인다. */}
+                      {pagesToShow.flatMap((n) =>
+                        (notesByPage.get(n) ?? [])
+                          .filter((note) => draggingNote?.note.id !== note.id)
+                          .map((note) => {
+                            const spread = noteToSpreadFxFy(n, note.x, note.y);
+                            if (!spread) return null;
+                            const isActive = n === activeNotePage && note.id === activeNoteId;
+                            return (
+                              <div
+                                key={note.id}
+                                className={`pointer-events-none absolute max-w-[60%] -translate-y-1/2 whitespace-pre rounded px-1 leading-tight ${
+                                  isActive
+                                    ? "border border-dashed border-brand-500 bg-brand-50/70"
+                                    : note.text
+                                      ? "bg-white/70"
+                                      : "border border-dashed border-slate-300 bg-white/40 text-slate-300"
+                                }`}
+                                style={{
+                                  left: `${spread.fx * 100}%`,
+                                  top: `${spread.fy * 100}%`,
+                                  fontSize: (note.fontSize ?? DEFAULT_NOTE_FONT_SIZE) * (boxWidth / STROKE_WIDTH_REFERENCE),
+                                  color: note.text ? "#0f172a" : undefined,
+                                }}
+                              >
+                                {note.text || (isActive ? "" : "✎")}
+                              </div>
+                            );
+                          }),
+                      )}
+
+                      {/* 두 쪽에 걸쳐 끄는 중인 메모의 "유령" - 위 레이어와 같은 자리에,
+                          다시하기 중인 실시간 화면 좌표(fx/fy)로 그린다. */}
                       {draggingNote && (
                         <div
                           className="pointer-events-none absolute z-30 max-w-[60%] -translate-y-1/2 whitespace-pre rounded border border-dashed border-brand-500 bg-brand-50/90 px-1 leading-tight text-slate-900 shadow-lg"
@@ -1016,9 +1094,21 @@ export default function PreviewViewerPage() {
                 </div>
               </div>
             )}
+
+            {isFullscreen && (
+              <FullscreenBar
+                boundsRef={containerRef}
+                zoom={zoom}
+                onZoomChange={handleZoomChange}
+                onZoomReset={() => setZoom(1)}
+                currentPage={printedCurrentPage}
+                numPages={printedNumPages}
+                onExitFullscreen={handleToggleFullscreen}
+              />
+            )}
           </div>
 
-          {!whiteboardMode && showNotes && (
+          {!whiteboardMode && !isFullscreen && showNotes && (
             <NotesPanel
               items={notesByPage.get(activeNotePage) ?? []}
               activeId={activeNoteId}

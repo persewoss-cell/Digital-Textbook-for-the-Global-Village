@@ -57,9 +57,6 @@ interface BookPageProps {
   onNoteDragStart: (note: PlacedNote, clientX: number, clientY: number) => void;
   onNoteDragMove: (clientX: number, clientY: number) => void;
   onNoteDragEnd: (clientX: number, clientY: number) => void;
-  /** 지금 두 쪽에 걸쳐 드래그 중인 메모의 id(부모가 관리) - 이 쪽에 있는
-   * 메모여도 이 값과 같으면 제자리에는 안 보이게 한다. */
-  activeDragNoteId?: string | null;
   /** 지우개가 메모 위를 지나가면 그 메모를 통째로 지운다(실수로 지웠으면 undo로
    * 되살릴 수 있다). 없으면 지우개는 필기만 지운다. */
   onDeleteNote?: (id: string) => void;
@@ -110,7 +107,6 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     onNoteDragStart,
     onNoteDragMove,
     onNoteDragEnd,
-    activeDragNoteId,
     onDeleteNote,
     onRequestDeselectTool,
     neighborAnnotation,
@@ -273,7 +269,6 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
           active={tool === "note"}
           readOnly={readOnly}
           pageWidth={boxWidth}
-          activeDragNoteId={activeDragNoteId}
           onCreate={onCreateNote}
           onSelect={onSelectNote}
           onDragStart={onNoteDragStart}

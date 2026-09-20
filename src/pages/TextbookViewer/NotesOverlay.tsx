@@ -10,7 +10,6 @@ export function NotesOverlay({
   active,
   readOnly,
   pageWidth,
-  activeDragNoteId,
   onCreate,
   onSelect,
   onDragStart,
@@ -25,10 +24,6 @@ export function NotesOverlay({
    * 기준으로 고른 값이라, 확대/축소로 쪽 크기가 달라질 때 그 비율만큼 환산해야
    * 메모 글씨가 쪽 크기에 비례해서 커지고 작아진다. */
   pageWidth: number;
-  /** 지금 두 쪽에 걸쳐 드래그 중인 메모의 id. 이 쪽의 메모라도 이 값과 같으면
-   * 이 자리에는 그리지 않는다 - 대신 부모가 두 쪽을 가로지르는 별도 레이어에
-   * 그 메모를 그려서, 중앙을 넘어가도 잘리지 않고 계속 보이게 한다. */
-  activeDragNoteId?: string | null;
   onCreate: (x: number, y: number) => void;
   onSelect: (id: string) => void;
   /** 메모를 눌러서 실제로 끌기 시작한 순간(살짝 움직여 "그냥 누른 것"과
@@ -92,26 +87,19 @@ export function NotesOverlay({
           onPointerUp={handleNotePointerUp}
           className={`absolute max-w-[60%] -translate-y-1/2 whitespace-pre rounded px-1 leading-tight ${
             readOnly ? "" : "cursor-move"
-          } ${
-            note.id === activeId
-              ? "border border-dashed border-brand-500 bg-brand-50/70"
-              : note.text
-                ? "bg-white/70"
-                : "border border-dashed border-slate-300 bg-white/40 text-slate-300"
           }`}
           style={{
             left: `${note.x * 100}%`,
             top: `${note.y * 100}%`,
             fontSize: (note.fontSize ?? DEFAULT_NOTE_FONT_SIZE) * widthScale,
             pointerEvents: readOnly ? "none" : "auto",
-            color: note.text ? "#0f172a" : undefined,
             touchAction: "none",
-            // 이 메모가 지금 두 쪽에 걸쳐 드래그되는 중이면(activeDragNoteId), 이
-            // 자리에는 안 보이게만 하고 완전히 지우지는 않는다 - 이 div가 pointer
-            // capture를 잡고 있어서, DOM에서 없애 버리면(예: 필터링) 드래그 도중
-            // 이후 pointermove/up을 못 받아 드래그가 끊긴다. 대신 화면에는 부모가
-            // 그리는, 쪽 경계에 잘리지 않는 별도 레이어의 "유령" 메모가 보인다.
-            opacity: note.id === activeDragNoteId ? 0 : 1,
+            // 실제로 눈에 보이는 메모 내용은 이 div가 아니라, 이 쪽 하나의
+            // overflow-hidden 테두리에 잘리지 않는 부모(스프레드 전체를 감싸는)
+            // 레이어가 그린다(SpreadNotesLayer). 이 div는 클릭/드래그(포인터 캡처)만
+            // 담당하는 투명한 히트박스로 남겨 둔다 - 메모 글이 길어서 쪽 경계를
+            // 넘어가도(입력 중이든 아니든) 잘리지 않고 계속 보이게 하기 위함이다.
+            opacity: 0,
           }}
         >
           {note.text || (note.id === activeId ? "" : "✎")}

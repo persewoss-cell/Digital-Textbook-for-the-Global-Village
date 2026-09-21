@@ -341,12 +341,12 @@ export default function RoomManagePage() {
               {room.grade}학년 {room.classNum}반 관리
               {textbook && (
                 <button
-                  className="rounded-lg bg-green-600 px-3 py-1 text-xs font-semibold text-white hover:bg-green-700"
+                  className="whitespace-nowrap rounded-lg bg-green-600 px-6 py-1.5 text-sm font-semibold text-white hover:bg-green-700"
                   onClick={() =>
                     navigate(`/room/${roomId}/textbook/${textbook.id}?asTeacher=1`)
                   }
                 >
-                  교재 들어가기
+                  선생님용 교재 들어가기
                 </button>
               )}
             </h1>

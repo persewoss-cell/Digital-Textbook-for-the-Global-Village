@@ -334,6 +334,12 @@ function VisitStatusModal({ onClose }: { onClose: () => void }) {
   }, [selectedDate]);
   useEffect(loadMonth, []);
 
+  const loadingAny = loadingDay || loadingMonth;
+  const reloadAll = () => {
+    loadDay(selectedDate);
+    loadMonth();
+  };
+
   // 표는 오늘이 맨 위로 오게(최신순) 보여주고, 한달 누적은 순서와 무관하게
   // 그 기간 전체를 그냥 더한 값이다.
   const monthlyDesc = useMemo(() => (monthly ? [...monthly].reverse() : null), [monthly]);
@@ -347,13 +353,14 @@ function VisitStatusModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal title="📊 접속 현황" onClose={onClose} widthClassName="max-w-xl">
+      <div className="mb-4 flex justify-end">
+        <button className="btn-ghost px-2 text-xs" disabled={loadingAny} onClick={reloadAll}>
+          {loadingAny ? "새로고침 중..." : "🔄 새로고침"}
+        </button>
+      </div>
+
       <div className="mb-6">
-        <div className="mb-2 flex items-center justify-between">
-          <label className="label mb-0">날짜 선택</label>
-          <button className="btn-ghost px-2 text-xs" disabled={loadingDay} onClick={() => loadDay(selectedDate)}>
-            {loadingDay ? "새로고침 중..." : "🔄 새로고침"}
-          </button>
-        </div>
+        <label className="label">날짜 선택</label>
         <select className="input" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}>
           {dateOptions.map((date) => (
             <option key={date} value={date}>
@@ -380,12 +387,7 @@ function VisitStatusModal({ onClose }: { onClose: () => void }) {
       </div>
 
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <label className="label mb-0">최근 한 달</label>
-          <button className="btn-ghost px-2 text-xs" disabled={loadingMonth} onClick={loadMonth}>
-            {loadingMonth ? "새로고침 중..." : "🔄 새로고침"}
-          </button>
-        </div>
+        <label className="label">최근 한 달</label>
 
         {monthError ? (
           <p className="text-sm text-red-500">불러오지 못했어요.</p>

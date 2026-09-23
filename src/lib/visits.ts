@@ -4,8 +4,18 @@ import type { Grade, VisitDoc } from "@/types";
 
 /** 한국 시간 기준 오늘 날짜("YYYY-MM-DD"). 자정 근처의 시차 혼동을 피하려고
  * 브라우저 로컬 시간 대신 명시적으로 Asia/Seoul로 고정한다. */
-function todayDateStr(): string {
+export function todayDateStr(): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Seoul" }).format(new Date());
+}
+
+/** 오늘(한국 시간 기준)부터 daysAgo일 전 날짜("YYYY-MM-DD"). 이미 한국 시간으로
+ * 고정된 오늘 날짜의 연/월/일 숫자만 가지고 계산하므로, 시차 때문에 하루씩
+ * 밀리는 문제 없이 순수한 달력 날짜 뺄셈이 된다. */
+export function dateStrDaysAgo(daysAgo: number): string {
+  const [y, m, d] = todayDateStr().split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d));
+  t.setUTCDate(t.getUTCDate() - daysAgo);
+  return t.toISOString().slice(0, 10);
 }
 
 /** 방문 집계는 부가 기능일 뿐이라, 여기서 실패해도(네트워크 문제 등) 학생의
@@ -37,8 +47,7 @@ export interface VisitSummary {
   total: number;
 }
 
-export async function getTodayVisitSummary(): Promise<VisitSummary> {
-  const date = todayDateStr();
+export async function getVisitSummaryForDate(date: string): Promise<VisitSummary> {
   // date 하나로만 걸러서(등호 조건 하나) 별도 복합 색인 없이도 항상 동작하게 하고,
   // 방/체험 갈래별 개수는 받아온 문서를 그 자리에서 나눠 센다(하루 방문 수는
   // 몇백 건 수준이라 이 정도는 가볍다).
@@ -51,4 +60,15 @@ export async function getTodayVisitSummary(): Promise<VisitSummary> {
     else if (v.kind === "preview") preview++;
   });
   return { room, preview, total: room + preview };
+}
+
+export interface DailyVisitSummary extends VisitSummary {
+  date: string;
+}
+
+/** 오늘을 포함해 최근 days일치 접속 현황을 날짜 오름차순(옛날 → 오늘)으로 반환한다. */
+export async function getRecentVisitSummaries(days: number): Promise<DailyVisitSummary[]> {
+  const dates = Array.from({ length: days }, (_, i) => dateStrDaysAgo(days - 1 - i));
+  const summaries = await Promise.all(dates.map((date) => getVisitSummaryForDate(date)));
+  return dates.map((date, i) => ({ date, ...summaries[i] }));
 }

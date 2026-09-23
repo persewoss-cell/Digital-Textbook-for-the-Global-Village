@@ -1,6 +1,7 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/AppShell";
+import { Modal } from "@/components/Modal";
 import {
   createTextbookDoc,
   deleteTextbookDoc,
@@ -10,8 +11,31 @@ import {
 import { extractRealChapters, getPdfPageCountFromBuffer, loadPdf, suggestChapters } from "@/lib/pdf";
 import { approveRoom, watchRooms } from "@/lib/rooms";
 import { isAdminUnlocked, markAdminUnlocked, clearAdminUnlock } from "@/lib/session";
-import { getTodayVisitSummary, type VisitSummary } from "@/lib/visits";
+import {
+  dateStrDaysAgo,
+  getRecentVisitSummaries,
+  getVisitSummaryForDate,
+  todayDateStr,
+  type DailyVisitSummary,
+  type VisitSummary,
+} from "@/lib/visits";
 import { GRADES, type ChapterMeta, type Grade, type RoomDoc, type TextbookDoc } from "@/types";
+
+const VISIT_DATE_OPTIONS_DAYS = 30;
+const VISIT_WEEKLY_DAYS = 7;
+
+/** "YYYY-MM-DD"를 "9월 23일 (화)" 형태로. 날짜 문자열에 이미 한국 시간 기준
+ * 달력 날짜가 담겨 있으므로, 요일 계산도 Asia/Seoul로 고정해 브라우저의
+ * 시간대와 무관하게 항상 같은 요일이 나오게 한다. */
+function formatVisitDateLabel(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00+09:00`);
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+    timeZone: "Asia/Seoul",
+  }).format(d);
+}
 
 const MASTER_PASSWORD = import.meta.env.VITE_ADMIN_MASTER_PASSWORD || "7279";
 
@@ -270,43 +294,118 @@ function TextbooksSection() {
   );
 }
 
-function TodayVisitsCard() {
+function VisitStatusModal({ onClose }: { onClose: () => void }) {
+  const today = todayDateStr();
+  const [selectedDate, setSelectedDate] = useState(today);
   const [summary, setSummary] = useState<VisitSummary | null>(null);
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [dayError, setDayError] = useState(false);
+  const [loadingDay, setLoadingDay] = useState(false);
 
-  const load = () => {
-    setLoading(true);
-    setError(false);
-    getTodayVisitSummary()
+  const [weekly, setWeekly] = useState<DailyVisitSummary[] | null>(null);
+  const [weekError, setWeekError] = useState(false);
+  const [loadingWeek, setLoadingWeek] = useState(false);
+
+  const dateOptions = useMemo(
+    () => Array.from({ length: VISIT_DATE_OPTIONS_DAYS }, (_, i) => dateStrDaysAgo(i)),
+    [],
+  );
+
+  const loadDay = (date: string) => {
+    setLoadingDay(true);
+    setDayError(false);
+    getVisitSummaryForDate(date)
       .then(setSummary)
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
+      .catch(() => setDayError(true))
+      .finally(() => setLoadingDay(false));
   };
 
-  useEffect(load, []);
+  const loadWeek = () => {
+    setLoadingWeek(true);
+    setWeekError(false);
+    getRecentVisitSummaries(VISIT_WEEKLY_DAYS)
+      .then(setWeekly)
+      .catch(() => setWeekError(true))
+      .finally(() => setLoadingWeek(false));
+  };
+
+  useEffect(() => {
+    loadDay(selectedDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
+  useEffect(loadWeek, []);
 
   return (
-    <div className="card mb-6 flex items-center justify-between p-4">
+    <Modal title="📊 접속 현황" onClose={onClose} widthClassName="max-w-xl">
+      <div className="mb-6">
+        <div className="mb-2 flex items-center justify-between">
+          <label className="label mb-0">날짜 선택</label>
+          <button className="btn-ghost px-2 text-xs" disabled={loadingDay} onClick={() => loadDay(selectedDate)}>
+            {loadingDay ? "새로고침 중..." : "🔄 새로고침"}
+          </button>
+        </div>
+        <select className="input" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}>
+          {dateOptions.map((date) => (
+            <option key={date} value={date}>
+              {formatVisitDateLabel(date)}
+              {date === today ? " (오늘)" : ""}
+            </option>
+          ))}
+        </select>
+
+        <div className="mt-3 rounded-lg bg-slate-50 p-4">
+          {summary ? (
+            <p className="text-2xl font-extrabold text-slate-800">
+              {summary.total}명{" "}
+              <span className="text-sm font-medium text-slate-400">
+                (교실 {summary.room}명 · 체험 {summary.preview}명)
+              </span>
+            </p>
+          ) : dayError ? (
+            <p className="text-sm text-red-500">불러오지 못했어요.</p>
+          ) : (
+            <p className="text-sm text-slate-400">불러오는 중...</p>
+          )}
+        </div>
+      </div>
+
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">오늘 접속</p>
-        {summary ? (
-          <p className="mt-1 text-2xl font-extrabold text-slate-800">
-            {summary.total}명{" "}
-            <span className="text-sm font-medium text-slate-400">
-              (교실 {summary.room}명 · 체험 {summary.preview}명)
-            </span>
-          </p>
-        ) : error ? (
-          <p className="mt-1 text-sm text-red-500">불러오지 못했어요.</p>
+        <div className="mb-2 flex items-center justify-between">
+          <label className="label mb-0">최근 {VISIT_WEEKLY_DAYS}일</label>
+          <button className="btn-ghost px-2 text-xs" disabled={loadingWeek} onClick={loadWeek}>
+            {loadingWeek ? "새로고침 중..." : "🔄 새로고침"}
+          </button>
+        </div>
+        {weekError ? (
+          <p className="text-sm text-red-500">불러오지 못했어요.</p>
+        ) : weekly ? (
+          <table className="w-full overflow-hidden rounded-lg border border-slate-200 text-sm">
+            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-400">
+              <tr>
+                <th className="px-3 py-2">날짜</th>
+                <th className="px-3 py-2 text-right">교실</th>
+                <th className="px-3 py-2 text-right">체험</th>
+                <th className="px-3 py-2 text-right">합계</th>
+              </tr>
+            </thead>
+            <tbody>
+              {weekly.map((d) => (
+                <tr key={d.date} className="border-t border-slate-100">
+                  <td className="px-3 py-2 text-slate-600">
+                    {formatVisitDateLabel(d.date)}
+                    {d.date === today ? " (오늘)" : ""}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-500">{d.room}</td>
+                  <td className="px-3 py-2 text-right text-slate-500">{d.preview}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-slate-800">{d.total}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         ) : (
-          <p className="mt-1 text-sm text-slate-400">불러오는 중...</p>
+          <p className="text-sm text-slate-400">불러오는 중...</p>
         )}
       </div>
-      <button className="btn-secondary text-xs" disabled={loading} onClick={load}>
-        {loading ? "새로고침 중..." : "🔄 새로고침"}
-      </button>
-    </div>
+    </Modal>
   );
 }
 
@@ -372,6 +471,7 @@ export default function AdminMasterPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"rooms" | "textbooks">("rooms");
+  const [showVisitStatus, setShowVisitStatus] = useState(false);
 
   const handleUnlock = (e: FormEvent) => {
     e.preventDefault();
@@ -428,10 +528,17 @@ export default function AdminMasterPage() {
   return (
     <AppShell right={<button className="btn-ghost" onClick={handleExit}>관리자 나가기</button>}>
       <div className="mx-auto max-w-5xl">
-        <h1 className="mb-1 text-xl font-bold">관리자 페이지</h1>
-        <p className="mb-6 text-sm text-slate-500">모든 반 방과 교재를 관리할 수 있어요.</p>
+        <div className="mb-6 flex items-start justify-between gap-2">
+          <div>
+            <h1 className="mb-1 text-xl font-bold">관리자 페이지</h1>
+            <p className="text-sm text-slate-500">모든 반 방과 교재를 관리할 수 있어요.</p>
+          </div>
+          <button className="btn-secondary shrink-0 text-sm" onClick={() => setShowVisitStatus(true)}>
+            📊 접속 현황
+          </button>
+        </div>
 
-        <TodayVisitsCard />
+        {showVisitStatus && <VisitStatusModal onClose={() => setShowVisitStatus(false)} />}
 
         <div className="mb-6 flex gap-2 border-b border-slate-200">
           {(["rooms", "textbooks"] as const).map((t) => (

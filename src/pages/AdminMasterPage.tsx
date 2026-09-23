@@ -22,7 +22,7 @@ import {
 import { GRADES, type ChapterMeta, type Grade, type RoomDoc, type TextbookDoc } from "@/types";
 
 const VISIT_DATE_OPTIONS_DAYS = 30;
-const VISIT_WEEKLY_DAYS = 7;
+const VISIT_MONTHLY_DAYS = 30;
 
 /** "YYYY-MM-DD"를 "9월 23일 (화)" 형태로. 날짜 문자열에 이미 한국 시간 기준
  * 달력 날짜가 담겨 있으므로, 요일 계산도 Asia/Seoul로 고정해 브라우저의
@@ -301,9 +301,9 @@ function VisitStatusModal({ onClose }: { onClose: () => void }) {
   const [dayError, setDayError] = useState(false);
   const [loadingDay, setLoadingDay] = useState(false);
 
-  const [weekly, setWeekly] = useState<DailyVisitSummary[] | null>(null);
-  const [weekError, setWeekError] = useState(false);
-  const [loadingWeek, setLoadingWeek] = useState(false);
+  const [monthly, setMonthly] = useState<DailyVisitSummary[] | null>(null);
+  const [monthError, setMonthError] = useState(false);
+  const [loadingMonth, setLoadingMonth] = useState(false);
 
   const dateOptions = useMemo(
     () => Array.from({ length: VISIT_DATE_OPTIONS_DAYS }, (_, i) => dateStrDaysAgo(i)),
@@ -319,20 +319,31 @@ function VisitStatusModal({ onClose }: { onClose: () => void }) {
       .finally(() => setLoadingDay(false));
   };
 
-  const loadWeek = () => {
-    setLoadingWeek(true);
-    setWeekError(false);
-    getRecentVisitSummaries(VISIT_WEEKLY_DAYS)
-      .then(setWeekly)
-      .catch(() => setWeekError(true))
-      .finally(() => setLoadingWeek(false));
+  const loadMonth = () => {
+    setLoadingMonth(true);
+    setMonthError(false);
+    getRecentVisitSummaries(VISIT_MONTHLY_DAYS)
+      .then(setMonthly)
+      .catch(() => setMonthError(true))
+      .finally(() => setLoadingMonth(false));
   };
 
   useEffect(() => {
     loadDay(selectedDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
-  useEffect(loadWeek, []);
+  useEffect(loadMonth, []);
+
+  // 표는 오늘이 맨 위로 오게(최신순) 보여주고, 한달 누적은 순서와 무관하게
+  // 그 기간 전체를 그냥 더한 값이다.
+  const monthlyDesc = useMemo(() => (monthly ? [...monthly].reverse() : null), [monthly]);
+  const monthlyTotal = useMemo(() => {
+    if (!monthly) return null;
+    return monthly.reduce<VisitSummary>(
+      (acc, d) => ({ room: acc.room + d.room, preview: acc.preview + d.preview, total: acc.total + d.total }),
+      { room: 0, preview: 0, total: 0 },
+    );
+  }, [monthly]);
 
   return (
     <Modal title="📊 접속 현황" onClose={onClose} widthClassName="max-w-xl">
@@ -370,39 +381,53 @@ function VisitStatusModal({ onClose }: { onClose: () => void }) {
 
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <label className="label mb-0">최근 {VISIT_WEEKLY_DAYS}일</label>
-          <button className="btn-ghost px-2 text-xs" disabled={loadingWeek} onClick={loadWeek}>
-            {loadingWeek ? "새로고침 중..." : "🔄 새로고침"}
+          <label className="label mb-0">최근 한 달</label>
+          <button className="btn-ghost px-2 text-xs" disabled={loadingMonth} onClick={loadMonth}>
+            {loadingMonth ? "새로고침 중..." : "🔄 새로고침"}
           </button>
         </div>
-        {weekError ? (
+
+        {monthError ? (
           <p className="text-sm text-red-500">불러오지 못했어요.</p>
-        ) : weekly ? (
-          <table className="w-full overflow-hidden rounded-lg border border-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-400">
-              <tr>
-                <th className="px-3 py-2">날짜</th>
-                <th className="px-3 py-2 text-right">교실</th>
-                <th className="px-3 py-2 text-right">체험</th>
-                <th className="px-3 py-2 text-right">합계</th>
-              </tr>
-            </thead>
-            <tbody>
-              {weekly.map((d) => (
-                <tr key={d.date} className="border-t border-slate-100">
-                  <td className="px-3 py-2 text-slate-600">
-                    {formatVisitDateLabel(d.date)}
-                    {d.date === today ? " (오늘)" : ""}
-                  </td>
-                  <td className="px-3 py-2 text-right text-slate-500">{d.room}</td>
-                  <td className="px-3 py-2 text-right text-slate-500">{d.preview}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-slate-800">{d.total}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
+        ) : !monthlyDesc || !monthlyTotal ? (
           <p className="text-sm text-slate-400">불러오는 중...</p>
+        ) : (
+          <>
+            <div className="mb-3 rounded-lg bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">한달 누적</p>
+              <p className="mt-1 text-2xl font-extrabold text-slate-800">
+                {monthlyTotal.total}명{" "}
+                <span className="text-sm font-medium text-slate-400">
+                  (교실 {monthlyTotal.room}명 · 체험 {monthlyTotal.preview}명)
+                </span>
+              </p>
+            </div>
+            <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-slate-50 text-left text-xs font-semibold uppercase text-slate-400">
+                  <tr>
+                    <th className="px-3 py-2">날짜</th>
+                    <th className="px-3 py-2 text-right">교실</th>
+                    <th className="px-3 py-2 text-right">체험</th>
+                    <th className="px-3 py-2 text-right">합계</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyDesc.map((d) => (
+                    <tr key={d.date} className="border-t border-slate-100">
+                      <td className="px-3 py-2 text-slate-600">
+                        {formatVisitDateLabel(d.date)}
+                        {d.date === today ? " (오늘)" : ""}
+                      </td>
+                      <td className="px-3 py-2 text-right text-slate-500">{d.room}</td>
+                      <td className="px-3 py-2 text-right text-slate-500">{d.preview}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-slate-800">{d.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </Modal>

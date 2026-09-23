@@ -25,6 +25,20 @@ export interface ParticipantDoc {
   joinedAt: number;
 }
 
+/** 하루 접속 인원 집계용 기록. 같은 사람이 같은 날 여러 번 들어와도 문서 하나로
+ * 합쳐지도록(setDoc merge) id를 "날짜_신원"으로 정해 둔다. */
+export interface VisitDoc {
+  id: string; // `${date}_${roomId}_${studentNum}` 또는 `${date}_preview_${uid}`
+  date: string; // "YYYY-MM-DD" (한국 시간 기준)
+  kind: "room" | "preview";
+  roomId?: string;
+  studentNum?: number;
+  name?: string;
+  grade?: Grade;
+  uid?: string;
+  lastSeenAt: number;
+}
+
 export interface ChapterMeta {
   title: string;
   startPage: number; // 1-based page number in the PDF (실제 이동에 쓰는 물리적 쪽번호)

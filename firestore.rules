@@ -21,6 +21,13 @@ service cloud.firestore {
       allow delete: if isSignedIn();
     }
 
+    // 관리자 페이지의 "오늘 접속 인원" 집계용 기록. 방에 들어온 학생과 체험 모드로
+    // 둘러본 방문자 모두 여기 한 번씩 기록된다.
+    match /visits/{id} {
+      allow read, create, update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+
     match /textbooks/{textbookId} {
       allow read, write: if isSignedIn();
     }

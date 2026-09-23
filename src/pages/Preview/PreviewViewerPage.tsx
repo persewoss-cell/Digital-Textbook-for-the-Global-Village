@@ -3,8 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { AppShell } from "@/components/AppShell";
 import { PhoneScaleFit, isPhoneViewport } from "@/components/PhoneScaleFit";
+import { auth } from "@/firebase";
 import { getTextbook, updateTextbookChapters } from "@/lib/firestore";
 import { extractPageText, extractRealChapters, loadPdf } from "@/lib/pdf";
+import { logPreviewVisit } from "@/lib/visits";
 import {
   DEFAULT_PEN_STYLE,
   DEFAULT_PENCIL_WIDTH_LEVEL,
@@ -212,6 +214,16 @@ export default function PreviewViewerPage() {
       cancelled = true;
     };
   }, [textbookId]);
+
+  // 관리자 페이지의 "오늘 접속" 집계에는 방에 들어온 학생뿐 아니라 이 체험 모드로
+  // 둘러본 사람도 포함되어야 하므로, 여기 들어오면 (신원이 없는 방문자를 구분하는
+  // 데 쓰는 조용한 익명 인증의) uid로 방문 기록을 남긴다. 교재 학년 정보는 나중에
+  // 로딩이 끝나면 한 번 더 채워 넣는다.
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    void logPreviewVisit(uid, textbook?.grade);
+  }, [textbook?.grade]);
 
   // 이 회색 영역(containerRef)을 관찰하는 ResizeObserver는, 그 DOM 요소 자체가
   // 통째로 새로 만들어질 때마다(예: 핸드폰을 세로에서 가로로 돌려 PhoneScaleFit의

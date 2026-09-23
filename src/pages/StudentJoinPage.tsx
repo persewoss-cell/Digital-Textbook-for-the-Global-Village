@@ -8,6 +8,7 @@ import {
   saveParticipantSession,
   saveRememberedParticipant,
 } from "@/lib/session";
+import { logRoomVisit } from "@/lib/visits";
 import type { RoomDoc } from "@/types";
 
 export default function StudentJoinPage() {
@@ -56,6 +57,7 @@ export default function StudentJoinPage() {
     try {
       await joinRoom(roomId, n, name);
       saveParticipantSession({ roomId, studentNum: n, name: name.trim() });
+      void logRoomVisit(roomId, n, name.trim());
 
       if (remember) {
         saveRememberedParticipant(roomId, { studentNum: n, name: name.trim() });

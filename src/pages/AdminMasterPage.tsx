@@ -10,6 +10,7 @@ import {
 import { extractRealChapters, getPdfPageCountFromBuffer, loadPdf, suggestChapters } from "@/lib/pdf";
 import { approveRoom, watchRooms } from "@/lib/rooms";
 import { isAdminUnlocked, markAdminUnlocked, clearAdminUnlock } from "@/lib/session";
+import { getTodayVisitSummary, type VisitSummary } from "@/lib/visits";
 import { GRADES, type ChapterMeta, type Grade, type RoomDoc, type TextbookDoc } from "@/types";
 
 const MASTER_PASSWORD = import.meta.env.VITE_ADMIN_MASTER_PASSWORD || "7279";
@@ -269,6 +270,46 @@ function TextbooksSection() {
   );
 }
 
+function TodayVisitsCard() {
+  const [summary, setSummary] = useState<VisitSummary | null>(null);
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    setError(false);
+    getTodayVisitSummary()
+      .then(setSummary)
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, []);
+
+  return (
+    <div className="card mb-6 flex items-center justify-between p-4">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">오늘 접속</p>
+        {summary ? (
+          <p className="mt-1 text-2xl font-extrabold text-slate-800">
+            {summary.total}명{" "}
+            <span className="text-sm font-medium text-slate-400">
+              (교실 {summary.room}명 · 체험 {summary.preview}명)
+            </span>
+          </p>
+        ) : error ? (
+          <p className="mt-1 text-sm text-red-500">불러오지 못했어요.</p>
+        ) : (
+          <p className="mt-1 text-sm text-slate-400">불러오는 중...</p>
+        )}
+      </div>
+      <button className="btn-secondary text-xs" disabled={loading} onClick={load}>
+        {loading ? "새로고침 중..." : "🔄 새로고침"}
+      </button>
+    </div>
+  );
+}
+
 function RoomsSection() {
   const [rooms, setRooms] = useState<RoomDoc[]>([]);
   useEffect(() => watchRooms(setRooms), []);
@@ -389,6 +430,8 @@ export default function AdminMasterPage() {
       <div className="mx-auto max-w-5xl">
         <h1 className="mb-1 text-xl font-bold">관리자 페이지</h1>
         <p className="mb-6 text-sm text-slate-500">모든 반 방과 교재를 관리할 수 있어요.</p>
+
+        <TodayVisitsCard />
 
         <div className="mb-6 flex gap-2 border-b border-slate-200">
           {(["rooms", "textbooks"] as const).map((t) => (

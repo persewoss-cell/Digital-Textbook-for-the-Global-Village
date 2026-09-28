@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { watchRooms } from "@/lib/rooms";
-import { UsageGuideModal } from "@/components/UsageGuideModal";
 import type { RoomDoc } from "@/types";
 
-export default function RoomLobbyPage() {
+export default function RoomLobbyPage({ onOpenGuide }: { onOpenGuide: () => void }) {
   const [rooms, setRooms] = useState<RoomDoc[]>([]);
-  const [showGuide, setShowGuide] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => watchRooms(setRooms), []);
@@ -44,7 +42,7 @@ export default function RoomLobbyPage() {
             </Link>
             <button
               className="btn flex-1 whitespace-nowrap bg-sky-500 px-2 text-xs text-white hover:bg-sky-600 sm:px-4 sm:text-sm"
-              onClick={() => setShowGuide(true)}
+              onClick={onOpenGuide}
             >
               📘 교재 사용 방법
             </button>
@@ -87,7 +85,6 @@ export default function RoomLobbyPage() {
 
         <p className="mt-10 text-center text-xs text-slate-400">만든이: 강형권 선생님</p>
       </div>
-      {showGuide && <UsageGuideModal onClose={() => setShowGuide(false)} />}
     </div>
   );
 }

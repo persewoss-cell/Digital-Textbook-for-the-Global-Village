@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Modal } from "@/components/Modal";
 
 interface Badge {
   icon: string;
@@ -223,32 +222,91 @@ const STUDENT_SECTIONS: { title: string; items: Item[] }[] = [
   },
 ];
 
-export function UsageGuideModal({ onClose }: { onClose: () => void }) {
+export function UsageGuideModal({
+  pinned,
+  onTogglePin,
+  onClose,
+}: {
+  /** 켜져 있으면 화면을 가리지 않는 떠 있는 창으로 바뀌어, 다른 페이지(방/교재)로
+   * 이동해도(App 레벨에서 열림 상태를 들고 있으므로) 계속 떠 있는 채로 볼 수 있다. */
+  pinned: boolean;
+  onTogglePin: () => void;
+  onClose: () => void;
+}) {
   const [tab, setTab] = useState<"teacher" | "student">("teacher");
   const sections = tab === "teacher" ? TEACHER_SECTIONS : STUDENT_SECTIONS;
 
+  const header = (
+    <div className="mb-4 flex items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <h2 className="shrink-0 text-lg font-bold">교재 사용 방법</h2>
+        <button
+          className={`shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold transition ${
+            pinned
+              ? "border-brand-500 bg-brand-50 text-brand-700"
+              : "border-slate-200 text-slate-500 hover:bg-slate-50"
+          }`}
+          onClick={onTogglePin}
+          title="켜면 방/교재로 들어가도 이 창이 안 닫히고 계속 떠 있어요"
+        >
+          📌 항상 띄워놓기{pinned ? " 켜짐" : ""}
+        </button>
+      </div>
+      <button className="btn-ghost shrink-0 px-2 text-slate-400" onClick={onClose} aria-label="닫기">
+        ✕
+      </button>
+    </div>
+  );
+
+  const tabs = (
+    <div className="mb-4 flex gap-2 border-b border-slate-200">
+      {(["teacher", "student"] as const).map((t) => (
+        <button
+          key={t}
+          onClick={() => setTab(t)}
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold ${
+            tab === t
+              ? "border-brand-600 text-brand-700"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+        >
+          {t === "teacher" ? "👩‍🏫 선생님" : "🙋 학생"}
+        </button>
+      ))}
+    </div>
+  );
+
+  const body = (
+    <div className={`${pinned ? "max-h-[50vh]" : "max-h-[65vh]"} overflow-y-auto pr-1`}>
+      {sections.map((s) => (
+        <Section key={s.title} title={s.title} items={s.items} />
+      ))}
+    </div>
+  );
+
+  if (pinned) {
+    // 배경을 가리는 어두운 막이 없어서, 교재 화면을 같이 클릭·조작할 수 있다.
+    return (
+      <div className="fixed bottom-4 right-4 z-40 w-[22rem] max-w-[calc(100vw-2rem)]">
+        <div className="card max-h-[75vh] overflow-hidden p-4 shadow-2xl">
+          {header}
+          {tabs}
+          {body}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Modal title="교재 사용 방법" onClose={onClose} widthClassName="max-w-2xl">
-      <div className="mb-4 flex gap-2 border-b border-slate-200">
-        {(["teacher", "student"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold ${
-              tab === t
-                ? "border-brand-600 text-brand-700"
-                : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {t === "teacher" ? "👩‍🏫 선생님" : "🙋 학생"}
-          </button>
-        ))}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div
+        className="card max-h-[85vh] w-full max-w-2xl overflow-y-auto p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {header}
+        {tabs}
+        {body}
       </div>
-      <div className="max-h-[65vh] overflow-y-auto pr-1">
-        {sections.map((s) => (
-          <Section key={s.title} title={s.title} items={s.items} />
-        ))}
-      </div>
-    </Modal>
+    </div>
   );
 }

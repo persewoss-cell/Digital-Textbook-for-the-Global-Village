@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 interface Badge {
   icon: string;
@@ -236,9 +236,48 @@ export function UsageGuideModal({
   const [tab, setTab] = useState<"teacher" | "student">("teacher");
   const sections = tab === "teacher" ? TEACHER_SECTIONS : STUDENT_SECTIONS;
 
+  // 떠 있는 창일 때만 제목줄을 드래그해서 옮길 수 있다. 처음엔 오른쪽 아래
+  // 모서리에 고정(fixed bottom/right)되어 있다가, 한 번이라도 드래그하면
+  // 그 순간의 실제 화면 좌표를 그대로 넘겨받아 절대 좌표(top/left) 방식으로
+  // 바뀌므로 위치가 튀지 않는다.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const dragStart = useRef<{ pointerX: number; pointerY: number; panelX: number; panelY: number } | null>(null);
+
+  const handleHeaderPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!pinned) return;
+    if ((e.target as HTMLElement).closest("button")) return; // 버튼 클릭은 드래그로 취급하지 않는다
+    const panel = panelRef.current;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragStart.current = { pointerX: e.clientX, pointerY: e.clientY, panelX: rect.left, panelY: rect.top };
+  };
+  const handleHeaderPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStart.current) return;
+    const panel = panelRef.current;
+    const w = panel?.offsetWidth ?? 0;
+    const h = panel?.offsetHeight ?? 0;
+    const dx = e.clientX - dragStart.current.pointerX;
+    const dy = e.clientY - dragStart.current.pointerY;
+    const nextX = Math.min(Math.max(0, dragStart.current.panelX + dx), window.innerWidth - w);
+    const nextY = Math.min(Math.max(0, dragStart.current.panelY + dy), window.innerHeight - h);
+    setDragPos({ x: nextX, y: nextY });
+  };
+  const handleHeaderPointerUp = () => {
+    dragStart.current = null;
+  };
+
   const header = (
-    <div className="mb-4 flex items-center justify-between gap-2">
+    <div
+      className={`mb-4 flex items-center justify-between gap-2 ${pinned ? "cursor-move touch-none" : ""}`}
+      onPointerDown={handleHeaderPointerDown}
+      onPointerMove={handleHeaderPointerMove}
+      onPointerUp={handleHeaderPointerUp}
+      onPointerCancel={handleHeaderPointerUp}
+    >
       <div className="flex min-w-0 items-center gap-2">
+        {pinned && <span className="shrink-0 text-slate-300">⠿</span>}
         <h2 className="shrink-0 text-lg font-bold">교재 사용 방법</h2>
         <button
           className={`shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold transition ${
@@ -287,7 +326,11 @@ export function UsageGuideModal({
   if (pinned) {
     // 배경을 가리는 어두운 막이 없어서, 교재 화면을 같이 클릭·조작할 수 있다.
     return (
-      <div className="fixed bottom-4 right-4 z-40 w-[22rem] max-w-[calc(100vw-2rem)]">
+      <div
+        ref={panelRef}
+        className="fixed z-40 w-[22rem] max-w-[calc(100vw-2rem)]"
+        style={dragPos ? { left: dragPos.x, top: dragPos.y } : { bottom: "1rem", right: "1rem" }}
+      >
         <div className="card max-h-[75vh] overflow-hidden p-4 shadow-2xl">
           {header}
           {tabs}

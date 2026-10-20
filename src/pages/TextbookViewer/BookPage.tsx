@@ -45,6 +45,7 @@ interface BookPageProps {
   persist?: boolean;
   penWidth?: number;
   penAlpha?: number;
+  shapeWidth?: number;
   penStyleId?: PenStyleId;
   showNotes: boolean;
   noteItems: PlacedNote[];
@@ -100,6 +101,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
     persist,
     penWidth,
     penAlpha,
+    shapeWidth,
     penStyleId,
     showNotes,
     noteItems,
@@ -272,6 +274,7 @@ export const BookPage = forwardRef<BookPageHandle, BookPageProps>(function BookP
         persist={persist}
         penWidth={penWidth}
         penAlpha={penAlpha}
+        shapeWidth={shapeWidth}
         penStyleId={penStyleId}
         neighborAnnotation={neighborAnnotation}
       />

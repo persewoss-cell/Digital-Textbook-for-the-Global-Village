@@ -18,9 +18,11 @@ import { isRoomUnlocked, loadParticipantSession, type ParticipantSession } from 
 import {
   DEFAULT_PEN_STYLE,
   DEFAULT_PENCIL_WIDTH_LEVEL,
+  DEFAULT_SHAPE_WIDTH_LEVEL,
   DEFAULT_WIDTH_LEVEL,
   PENCIL_BASE_WIDTH,
   PEN_STYLES,
+  SHAPE_BASE_WIDTH,
   linearWidthForLevel,
   widthForPenLevel,
   type AnnotationTool,
@@ -115,6 +117,21 @@ export default function TextbookViewerPage() {
   const [viewMode, setViewMode] = useState<"single" | "spread">("spread");
   const [zoom, setZoom] = useState(1);
   const [tool, setTool] = useState<AnnotationTool>("none");
+  // 메모 추가 버튼을 눌러 노트 도구를 켤 때, 버튼 자체는 그대로 두고 교재
+  // 하단 중앙에 잠깐 떴다 사라지는 안내 문구를 따로 보여준다.
+  const [noteHintVisible, setNoteHintVisible] = useState(false);
+  const noteHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleAddNoteClick = useCallback(() => {
+    setTool((t) => {
+      const next = t === "note" ? "none" : "note";
+      if (next === "note") {
+        setNoteHintVisible(true);
+        if (noteHintTimer.current) clearTimeout(noteHintTimer.current);
+        noteHintTimer.current = setTimeout(() => setNoteHintVisible(false), 2000);
+      }
+      return next;
+    });
+  }, []);
   const [color, setColor] = useState("#ef4444");
   const [penStyleId, setPenStyleId] = useState<PenStyleId>(DEFAULT_PEN_STYLE);
   // 색펜 종류별 굵기는 서로 독립적으로 기억해 둔다 - 색연필을 굵게 조정해 뒀다가
@@ -129,6 +146,9 @@ export default function TextbookViewerPage() {
   });
   const [pencilWidth, setPencilWidth] = useState(() =>
     linearWidthForLevel(PENCIL_BASE_WIDTH, DEFAULT_PENCIL_WIDTH_LEVEL),
+  );
+  const [shapeWidth, setShapeWidth] = useState(() =>
+    linearWidthForLevel(SHAPE_BASE_WIDTH, DEFAULT_SHAPE_WIDTH_LEVEL),
   );
   const activePenStyle = PEN_STYLES.find((p) => p.id === penStyleId) ?? PEN_STYLES[0];
   // 연필(tool==="pen")일 때는 연필 굵기를, 색펜일 때는 지금 고른 종류의 굵기를 쓴다.
@@ -1043,6 +1063,8 @@ export default function TextbookViewerPage() {
     onPenWidthChange: (width: number) => setPenWidthByStyle((prev) => ({ ...prev, [penStyleId]: width })),
     pencilWidth,
     onPencilWidthChange: setPencilWidth,
+    shapeWidth,
+    onShapeWidthChange: setShapeWidth,
     eraserSize,
     onEraserSizeChange: setEraserSize,
     onUndo: handleUndo,
@@ -1151,6 +1173,7 @@ export default function TextbookViewerPage() {
                     futureMap={whiteboardFutureMap.current}
                     persist={false}
                     penWidth={effectivePenWidth}
+                    shapeWidth={shapeWidth}
                     penAlpha={activePenStyle.alpha}
                     penStyleId={penStyleId}
                   />
@@ -1211,6 +1234,7 @@ export default function TextbookViewerPage() {
                             historyMap={historyMapRef.current}
                             futureMap={futureMapRef.current}
                             penWidth={effectivePenWidth}
+                            shapeWidth={shapeWidth}
                             penAlpha={activePenStyle.alpha}
                             penStyleId={penStyleId}
                             showNotes
@@ -1342,6 +1366,20 @@ export default function TextbookViewerPage() {
               </div>
             )}
 
+            {/* 노트 도구를 켤 때 교재 하단 중앙에 잠깐 떴다 사라지는 안내 문구.
+                메모 추가 버튼 자체는 그대로 두고, 이 문구만 따로 보여준다. */}
+            {!whiteboardMode && (
+              <div
+                className={`pointer-events-none absolute inset-x-0 bottom-6 z-40 flex justify-center transition-opacity duration-300 ${
+                  noteHintVisible ? "opacity-100" : "opacity-0"
+                }`}
+              >
+                <p className="rounded-full bg-white/90 px-4 py-1.5 text-sm font-semibold text-red-400 shadow">
+                  교재를 클릭해서 추가하세요
+                </p>
+              </div>
+            )}
+
             {/* 전체화면에서는 목차/노트 패널을 넣을 자리가 없어서 평소엔 통째로
                 숨기는데, 그 대신 책이 다 못 채우는 화면 양옆 회색 여백에 작은
                 버튼 + 목록을 띄워 같은 기능을 쓸 수 있게 한다. */}
@@ -1365,7 +1403,7 @@ export default function TextbookViewerPage() {
                   onChangeText={handleUpdateNoteText}
                   onChangeFontSize={handleChangeNoteFontSize}
                   onDelete={handleDeleteNote}
-                  onAddNote={() => setTool((t) => (t === "note" ? "none" : "note"))}
+                  onAddNote={handleAddNoteClick}
                 />
               </>
             )}
@@ -1383,7 +1421,7 @@ export default function TextbookViewerPage() {
               onChangeFontSize={handleChangeNoteFontSize}
               onDelete={handleDeleteNote}
               onClose={() => setShowNotes(false)}
-              onAddNote={() => setTool((t) => (t === "note" ? "none" : "note"))}
+              onAddNote={handleAddNoteClick}
             />
           )}
         </div>

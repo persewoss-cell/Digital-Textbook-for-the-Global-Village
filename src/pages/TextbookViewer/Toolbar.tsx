@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import {
   PENCIL_BASE_WIDTH,
   PEN_STYLES,
+  SHAPE_BASE_WIDTH,
   WIDTH_LEVELS,
   levelForPenWidth,
   linearLevelForWidth,
@@ -143,6 +144,8 @@ export function Toolbar({
   onPenWidthChange,
   pencilWidth,
   onPencilWidthChange,
+  shapeWidth,
+  onShapeWidthChange,
   eraserSize,
   onEraserSizeChange,
   onUndo,
@@ -184,6 +187,9 @@ export function Toolbar({
   /** 연필(색 없는 검정 연필)의 실제 굵기 */
   pencilWidth: number;
   onPencilWidthChange: (width: number) => void;
+  /** 도형(네모/원/선/삼각형/화살표) 테두리의 실제 굵기 */
+  shapeWidth: number;
+  onShapeWidthChange: (width: number) => void;
   eraserSize: number;
   onEraserSizeChange: (n: number) => void;
   onUndo: () => void;
@@ -521,6 +527,13 @@ export function Toolbar({
                         {s.title}
                       </button>
                     ))}
+                  </div>
+                  <p className="mb-1.5 text-[11px] font-semibold text-slate-400">굵기</p>
+                  <div className="mb-3">
+                    <WidthSlider
+                      level={linearLevelForWidth(shapeWidth, SHAPE_BASE_WIDTH)}
+                      onLevelChange={(level) => onShapeWidthChange(linearWidthForLevel(SHAPE_BASE_WIDTH, level))}
+                    />
                   </div>
                   <p className="mb-1.5 text-[11px] font-semibold text-slate-400">색상</p>
                   <ColorSwatches

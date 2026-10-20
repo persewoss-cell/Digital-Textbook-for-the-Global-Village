@@ -63,9 +63,7 @@ export function NotesPanel({
             </button>
           )}
         </div>
-        <p className="text-xs text-slate-400">
-          {readOnly ? "읽기 전용이에요." : noteToolActive ? "교재의 빈 곳을 한 번 클릭해서 메모를 추가하세요." : ""}
-        </p>
+        <p className="text-xs text-slate-400">{readOnly ? "읽기 전용이에요." : ""}</p>
         {!readOnly && onAddNote && (
           <button
             className={`mt-2 w-full rounded-lg border px-2 py-1.5 text-xs font-semibold ${
@@ -75,7 +73,7 @@ export function NotesPanel({
             }`}
             onClick={onAddNote}
           >
-            {noteToolActive ? "교재를 클릭해서 추가하세요" : "+ 메모 추가"}
+            + 메모 추가
           </button>
         )}
       </div>

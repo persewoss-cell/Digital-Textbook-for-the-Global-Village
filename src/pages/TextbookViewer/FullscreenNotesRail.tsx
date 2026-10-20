@@ -48,7 +48,7 @@ export function FullscreenNotesRail({
   }, [items]);
 
   return (
-    <div className="absolute right-2 top-2 z-20 w-36">
+    <div className="absolute right-2 top-2 z-20 w-32">
       <button
         className={`relative w-full rounded-lg px-2 py-1.5 text-xs font-semibold shadow ${
           open ? "bg-brand-100 text-brand-700" : "bg-white/95 text-slate-600 hover:bg-white"
@@ -71,9 +71,9 @@ export function FullscreenNotesRail({
                   : "border-slate-200 text-slate-600 hover:bg-slate-50"
               }`}
               onClick={onAddNote}
-              title={noteToolActive ? "교재를 클릭해서 추가하세요" : "메모 추가"}
+              title="메모 추가"
             >
-              {noteToolActive ? "교재 클릭" : "＋"}
+              ＋
             </button>
           )}
           <div className="space-y-1.5">

@@ -154,6 +154,13 @@ export const DEFAULT_WIDTH_LEVEL: Record<PenStyleId, number> = {
 };
 export const DEFAULT_PENCIL_WIDTH_LEVEL = 3;
 
+// 도형(네모/원/선/삼각형/화살표) 테두리의 "기본" 굵기 - 굵기 조정 슬라이더를
+// 새로 넣기 전까지 고정값으로 쓰던 것과 같은 값이다. 5단계가 기본값이 되도록
+// 골라서(unit = 2.5/5 = 0.5, 5단계 = 2.5) 슬라이더를 넣어도 지금까지 그려 둔
+// 도형의 두께가 그대로 유지된다.
+export const SHAPE_BASE_WIDTH = 2.5;
+export const DEFAULT_SHAPE_WIDTH_LEVEL = 5;
+
 export interface PlacedNote {
   id: string;
   x: number; // 0-1 normalized page coordinates

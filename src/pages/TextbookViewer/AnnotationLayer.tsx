@@ -314,6 +314,8 @@ export const AnnotationLayer = forwardRef<
      * 연필(tool==="pen")일 때는 부모가 이 값에 연필 굵기를 넣어서 넘긴다. */
     penWidth?: number;
     penAlpha?: number;
+    /** 도형(네모/원/선/삼각형/화살표) 테두리 굵기. */
+    shapeWidth?: number;
     /** 지금 선택된 색펜 종류 - 색연필(colorPencil)일 때만 질감 있게 그리는 데 쓴다.
      * 커밋되는 획에도 함께 저장해서, 나중에 다시 그릴 때도(새로고침 등) 같은
      * 질감으로 그려지게 한다. */
@@ -344,6 +346,7 @@ export const AnnotationLayer = forwardRef<
     persist = true,
     penWidth = 2.5,
     penAlpha = 1,
+    shapeWidth = 2.5,
     penStyleId,
     neighborAnnotation,
   },
@@ -527,7 +530,7 @@ export const AnnotationLayer = forwardRef<
     ];
   };
 
-  const strokeWidth = tool === "colorPen" || tool === "pen" ? penWidth : isShapeTool(tool) ? 2.5 : 1.4;
+  const strokeWidth = tool === "colorPen" || tool === "pen" ? penWidth : isShapeTool(tool) ? shapeWidth : 1.4;
   const strokeAlpha = tool === "colorPen" ? penAlpha : 1;
   // 화면에 보여줄 지우개 미리보기 원의 반지름(CSS px) - eraserSize(반지름, 가상
   // 쪽 너비 STROKE_WIDTH_REFERENCE 기준)를 이 쪽이 실제로 표시되는 너비(displayWidth)

@@ -143,9 +143,6 @@ export function NotesPanel({
             </div>
           );
         })}
-        {items.length === 0 && (
-          <p className="px-1 py-4 text-center text-xs text-slate-400">이 쪽에 메모가 없어요.</p>
-        )}
       </div>
     </div>
   );

@@ -118,7 +118,7 @@ export default function TextbookViewerPage() {
   const [zoom, setZoom] = useState(1);
   const [tool, setTool] = useState<AnnotationTool>("none");
   // 메모 추가 버튼을 눌러 노트 도구를 켤 때, 버튼 자체는 그대로 두고 교재
-  // 하단 중앙에 잠깐 떴다 사라지는 안내 문구를 따로 보여준다.
+  // 상단 중앙에 잠깐 떴다 사라지는 안내 문구를 따로 보여준다.
   const [noteHintVisible, setNoteHintVisible] = useState(false);
   const noteHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleAddNoteClick = useCallback(() => {
@@ -884,6 +884,8 @@ export default function TextbookViewerPage() {
     setActiveNoteId(id);
     persistNotesForPage(page, next, true);
     setTool("none"); // 한 번 찍으면 자동으로 노트 도구가 꺼짐 (계속 새 메모가 생기는 것 방지)
+    if (noteHintTimer.current) clearTimeout(noteHintTimer.current);
+    setNoteHintVisible(false);
     touchProgressPage(page);
   };
   const handleSelectNote = (page: number, id: string) => {
@@ -1366,11 +1368,12 @@ export default function TextbookViewerPage() {
               </div>
             )}
 
-            {/* 노트 도구를 켤 때 교재 하단 중앙에 잠깐 떴다 사라지는 안내 문구.
-                메모 추가 버튼 자체는 그대로 두고, 이 문구만 따로 보여준다. */}
+            {/* 노트 도구를 켤 때 교재 상단 중앙에 잠깐 떴다 사라지는 안내 문구.
+                메모 추가 버튼 자체는 그대로 두고, 이 문구만 따로 보여준다. 실제로
+                교재를 클릭해서 메모를 추가하면 타이머를 기다리지 않고 바로 사라진다. */}
             {!whiteboardMode && (
               <div
-                className={`pointer-events-none absolute inset-x-0 bottom-6 z-40 flex justify-center transition-opacity duration-300 ${
+                className={`pointer-events-none absolute inset-x-0 top-6 z-40 flex justify-center transition-opacity duration-300 ${
                   noteHintVisible ? "opacity-100" : "opacity-0"
                 }`}
               >

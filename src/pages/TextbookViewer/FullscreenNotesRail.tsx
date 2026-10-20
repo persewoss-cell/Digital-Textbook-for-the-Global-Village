@@ -142,9 +142,6 @@ export function FullscreenNotesRail({
                 </div>
               );
             })}
-            {items.length === 0 && (
-              <p className="px-1 py-2 text-center text-[11px] text-slate-400">이 쪽에 메모가 없어요.</p>
-            )}
           </div>
         </div>
       )}

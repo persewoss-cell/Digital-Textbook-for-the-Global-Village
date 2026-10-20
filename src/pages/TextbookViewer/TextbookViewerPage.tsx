@@ -1281,6 +1281,10 @@ export default function TextbookViewerPage() {
                                   top: `${spread.fy * 100}%`,
                                   fontSize: (note.fontSize ?? DEFAULT_NOTE_FONT_SIZE) * (boxWidth / STROKE_WIDTH_REFERENCE),
                                   color: note.text ? "#0f172a" : undefined,
+                                  // 막 찍은 메모는 아직 글자가 없어서 내용만으로는 크기가 생기지
+                                  // 않아 점선 박스가 사실상 안 보였다. 글자를 입력하기 전에도
+                                  // 바로 작은 빈 사각형이 보이도록 최소 크기를 준다.
+                                  ...(isActive && !note.text ? { minWidth: "0.9em", minHeight: "1.4em" } : {}),
                                 }}
                               >
                                 {note.text || (isActive ? "" : "✎")}

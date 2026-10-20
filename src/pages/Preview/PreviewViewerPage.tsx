@@ -81,17 +81,14 @@ export default function PreviewViewerPage() {
   const [zoom, setZoom] = useState(1);
   const [tool, setTool] = useState<AnnotationTool>("none");
   // 메모 추가 버튼을 눌러 노트 도구를 켤 때, 버튼 자체는 그대로 두고 교재
-  // 상단 중앙에 잠깐 떴다 사라지는 안내 문구를 따로 보여준다.
+  // 상단 중앙에 안내 문구를 따로 보여준다. 시간이 지나도 저절로 사라지지
+  // 않고, 실제로 교재를 눌러 메모를 추가하거나(handleCreateNote) 도구를
+  // 다시 꺼야만(여기서 next === "none"일 때) 사라진다.
   const [noteHintVisible, setNoteHintVisible] = useState(false);
-  const noteHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleAddNoteClick = useCallback(() => {
     setTool((t) => {
       const next = t === "note" ? "none" : "note";
-      if (next === "note") {
-        setNoteHintVisible(true);
-        if (noteHintTimer.current) clearTimeout(noteHintTimer.current);
-        noteHintTimer.current = setTimeout(() => setNoteHintVisible(false), 2000);
-      }
+      setNoteHintVisible(next === "note");
       return next;
     });
   }, []);
@@ -743,7 +740,6 @@ export default function PreviewViewerPage() {
     setActiveNotePage(page);
     setActiveNoteId(id);
     setTool("none"); // 한 번 찍으면 자동으로 노트 도구가 꺼짐 (계속 새 메모가 생기는 것 방지)
-    if (noteHintTimer.current) clearTimeout(noteHintTimer.current);
     setNoteHintVisible(false);
   };
   const handleSelectNote = (page: number, id: string) => {
@@ -1187,9 +1183,10 @@ export default function PreviewViewerPage() {
               </div>
             )}
 
-            {/* 노트 도구를 켤 때 교재 상단 중앙에 잠깐 떴다 사라지는 안내 문구.
-                메모 추가 버튼 자체는 그대로 두고, 이 문구만 따로 보여준다. 실제로
-                교재를 클릭해서 메모를 추가하면 타이머를 기다리지 않고 바로 사라진다. */}
+            {/* 노트 도구를 켤 때 교재 상단 중앙에 뜨는 안내 문구. 메모 추가 버튼
+                자체는 그대로 두고, 이 문구만 따로 보여준다. 시간이 지나도 저절로
+                사라지지 않고, 실제로 교재를 눌러 메모를 추가하거나 노트 도구를
+                다시 끄면 그때 사라진다. */}
             {!whiteboardMode && (
               <div
                 className={`pointer-events-none absolute inset-x-0 top-6 z-40 flex justify-center transition-opacity duration-300 ${
@@ -1197,7 +1194,7 @@ export default function PreviewViewerPage() {
                 }`}
               >
                 <p className="rounded-full bg-white/90 px-4 py-1.5 text-sm font-semibold text-red-400 shadow">
-                  교재를 클릭해서 추가하세요
+                  원하는 위치에 터치하여 추가하세요
                 </p>
               </div>
             )}

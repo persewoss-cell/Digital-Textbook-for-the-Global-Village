@@ -30,6 +30,8 @@ import {
 import { Toolbar, type SearchResult, DEFAULT_ERASER_SIZE } from "@/pages/TextbookViewer/Toolbar";
 import { TocPanel } from "@/pages/TextbookViewer/TocPanel";
 import { NotesPanel } from "@/pages/TextbookViewer/NotesPanel";
+import { FullscreenTocRail } from "@/pages/TextbookViewer/FullscreenTocRail";
+import { FullscreenNotesRail } from "@/pages/TextbookViewer/FullscreenNotesRail";
 import { DEFAULT_NOTE_FONT_SIZE } from "@/pages/TextbookViewer/NotesOverlay";
 import { MagnifierOverlay, type MagnifierRect } from "@/pages/TextbookViewer/MagnifierOverlay";
 import { usePinchZoom } from "@/pages/TextbookViewer/usePinchZoom";
@@ -1157,6 +1159,34 @@ export default function PreviewViewerPage() {
                   <p className="text-sm font-semibold text-slate-600">불러오는 중...</p>
                 </div>
               </div>
+            )}
+
+            {/* 전체화면에서는 목차/노트 패널을 넣을 자리가 없어서 평소엔 통째로
+                숨기는데, 그 대신 책이 다 못 채우는 화면 양옆 회색 여백에 작은
+                버튼 + 목록을 띄워 같은 기능을 쓸 수 있게 한다. */}
+            {isFullscreen && !whiteboardMode && (
+              <>
+                <FullscreenTocRail
+                  chapters={textbook.chapters}
+                  currentPage={currentPage}
+                  open={showToc}
+                  onToggle={() => setShowToc((v) => !v)}
+                  onJump={jumpTo}
+                />
+                <FullscreenNotesRail
+                  items={notesByPage.get(activeNotePage) ?? []}
+                  activeId={activeNoteId}
+                  readOnly={false}
+                  noteToolActive={tool === "note"}
+                  open={showNotes}
+                  onToggle={() => setShowNotes((v) => !v)}
+                  onSelect={(id) => setActiveNoteId(id)}
+                  onChangeText={handleUpdateNoteText}
+                  onChangeFontSize={handleChangeNoteFontSize}
+                  onDelete={handleDeleteNote}
+                  onAddNote={() => setTool((t) => (t === "note" ? "none" : "note"))}
+                />
+              </>
             )}
           </div>
 

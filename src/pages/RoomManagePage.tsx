@@ -90,7 +90,7 @@ function ThumbNotes({
         <div
           key={note.id}
           // 본문에서와 마찬가지로 줄바꿈(Enter)은 그대로 살리고, 한 줄로 잘라 "..."으로 표시하지 않는다.
-          className="absolute max-w-[60%] -translate-y-1/2 whitespace-pre rounded-sm bg-white/70 px-px font-normal leading-tight text-slate-800"
+          className="absolute max-w-[60%] whitespace-pre rounded-sm bg-white/70 px-px font-normal leading-tight text-slate-800"
           style={{
             left: `${note.x * 100}%`,
             top: `${note.y * 100}%`,

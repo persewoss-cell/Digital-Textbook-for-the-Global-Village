@@ -1112,7 +1112,7 @@ export default function PreviewViewerPage() {
                             return (
                               <div
                                 key={note.id}
-                                className={`pointer-events-none absolute max-w-[60%] -translate-y-1/2 whitespace-pre rounded px-1 leading-tight ${
+                                className={`pointer-events-none absolute max-w-[60%] whitespace-pre rounded px-1 leading-tight ${
                                   isActive
                                     ? "border border-dashed border-brand-500 bg-brand-50/70"
                                     : note.text
@@ -1140,7 +1140,7 @@ export default function PreviewViewerPage() {
                           다시하기 중인 실시간 화면 좌표(fx/fy)로 그린다. */}
                       {draggingNote && (
                         <div
-                          className="pointer-events-none absolute z-30 max-w-[60%] -translate-y-1/2 whitespace-pre rounded border border-dashed border-brand-500 bg-brand-50/90 px-1 leading-tight text-slate-900 shadow-lg"
+                          className="pointer-events-none absolute z-30 max-w-[60%] whitespace-pre rounded border border-dashed border-brand-500 bg-brand-50/90 px-1 leading-tight text-slate-900 shadow-lg"
                           style={{
                             left: `${draggingNote.fx * 100}%`,
                             top: `${draggingNote.fy * 100}%`,

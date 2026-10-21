@@ -85,7 +85,7 @@ export function NotesOverlay({
           onPointerDown={(e) => handleNotePointerDown(e, note)}
           onPointerMove={(e) => handleNotePointerMove(e, note)}
           onPointerUp={handleNotePointerUp}
-          className={`absolute max-w-[60%] -translate-y-1/2 whitespace-pre rounded px-1 leading-tight ${
+          className={`absolute max-w-[60%] whitespace-pre rounded px-1 leading-tight ${
             readOnly ? "" : "cursor-move"
           }`}
           style={{

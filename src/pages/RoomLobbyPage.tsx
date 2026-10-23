@@ -3,6 +3,15 @@ import { Link, useNavigate } from "react-router-dom";
 import { watchRooms } from "@/lib/rooms";
 import type { RoomDoc } from "@/types";
 
+/** 선생님 이름 가운데를 ○로 가려 개인정보를 보호한다 (예: "홍길동" -> "홍○동",
+ * "홍길" -> "홍○", 4글자 이상이면 앞/뒤 한 글자만 남기고 가운데를 전부 가린다). */
+function maskTeacherName(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length <= 1) return trimmed;
+  if (trimmed.length === 2) return `${trimmed[0]}○`;
+  return `${trimmed[0]}${"○".repeat(trimmed.length - 2)}${trimmed[trimmed.length - 1]}`;
+}
+
 export default function RoomLobbyPage({ onOpenGuide }: { onOpenGuide: () => void }) {
   const [rooms, setRooms] = useState<RoomDoc[]>([]);
   const navigate = useNavigate();
@@ -57,7 +66,7 @@ export default function RoomLobbyPage({ onOpenGuide }: { onOpenGuide: () => void
                   {r.grade}학년 {r.classNum}반
                 </p>
                 {r.teacherName && (
-                  <p className="truncate text-xs text-slate-400">{r.teacherName} 선생님</p>
+                  <p className="truncate text-xs text-slate-400">{maskTeacherName(r.teacherName)} 선생님</p>
                 )}
               </div>
               <div className="flex gap-1.5">
